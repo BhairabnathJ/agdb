@@ -57,14 +57,21 @@ Run the visualization script:
 python visualize_simulation.py simulation_logs.json
 ```
 
-This generates:
+This generates 11 graphs + 1 report in a timestamped session folder:
 - `graph_vwc.png` - Volumetric Water Content over time
 - `graph_psi.png` - Matric Potential (soil water tension)
 - `graph_aw.png` - Available Water depth
 - `graph_depletion.png` - Soil water depletion percentage
 - `graph_status.png` - Zone status distribution
 - `graph_phases.png` - Phase timeline with average VWC
+- `graph_raw.png` - Raw ADC sensor readings
+- `graph_confidence.png` - **Calibration confidence over time** ⭐ NEW
+- `graph_drying_rate.png` - **Soil moisture change rate** ⭐ NEW
+- `graph_temperature.png` - **Soil temperature trends** ⭐ NEW
+- `graph_dashboard.png` - **Multi-metric dashboard (6-panel overview)** ⭐ NEW
 - `simulation_report.txt` - Statistical summary
+
+All files are saved to `graphs/session_YYYYMMDD_HHMMSS/`
 
 ## Simulation Details
 
@@ -87,6 +94,25 @@ The simulation uses a 4×4 grid with 9 active sensors:
 - **Inactive zones**: A3, B2, B4, C1, C3, D1, D4
 
 Each zone has independent soil properties and responds differently to environmental changes.
+
+## Output Organization
+
+Each visualization run creates a new timestamped folder:
+```
+graphs/
+├── session_20260125_143022/
+│   ├── graph_vwc.png
+│   ├── graph_confidence.png
+│   ├── graph_dashboard.png
+│   └── ... (11 more files)
+├── session_20260125_150845/
+│   └── ... (another session)
+```
+
+This allows you to:
+- Compare different simulation runs
+- Keep historical analysis organized
+- Prevent overwriting previous results
 
 ## Interpreting the Graphs
 
@@ -125,6 +151,53 @@ Each zone has independent soil properties and responds differently to environmen
 - **Top**: Timeline showing simulation phases
 - **Bottom**: Average VWC during each phase
 - **Colors**: Blue (wetting), Red (drying), Gray (stable)
+
+### Calibration Confidence ⭐ NEW
+- **Y-axis**: Confidence percentage (0-100%)
+- **Interpretation**: How confident the physics engine is in its calibration
+- **Thresholds**:
+  - 50% = Moderate confidence (yellow line)
+  - 80% = High confidence (green line)
+- **Expected behavior**: Should increase over time as auto-calibration learns
+- **Low confidence**: May indicate sensor issues or unusual soil conditions
+
+### Drying Rate ⭐ NEW
+- **Y-axis**: Rate of moisture change (% VWC per hour)
+- **Positive values**: Soil is wetting (irrigation, rain)
+- **Negative values**: Soil is drying (evapotranspiration)
+- **Zero line**: No change in moisture
+- **Thresholds**:
+  - > +0.2%/hr = Rapid wetting (irrigation event)
+  - < -0.2%/hr = Rapid drying (high ET stress)
+- **Usage**: Predict when irrigation will be needed based on drying trends
+
+### Soil Temperature ⭐ NEW
+- **Y-axis**: Temperature in °C
+- **Interpretation**: Soil temperature affects:
+  - Sensor readings (temperature compensation)
+  - Evapotranspiration rates
+  - Root water uptake
+- **Typical range**: 15-30°C
+- **Pattern**: Should follow diurnal (day/night) cycles
+
+### Raw ADC Readings
+- **Y-axis**: Raw analog-to-digital converter values (0-1023)
+- **Interpretation**: Direct sensor output before calibration
+- **Lower values**: Drier soil (less capacitance)
+- **Higher values**: Wetter soil (more capacitance)
+- **Usage**: Diagnose sensor hardware issues
+
+### Multi-Metric Dashboard ⭐ NEW
+- **6-panel overview**: All key metrics in one view
+- **Shows averages** across all active zones
+- **Perfect for**: Quick assessment of overall field status
+- **Panels**:
+  1. VWC - Current moisture levels
+  2. Psi - Water availability to plants
+  3. AW - Remaining water reserves
+  4. Depletion - How much water has been used
+  5. Confidence - System reliability
+  6. Drying Rate - Trend direction
 
 ## Console Logging
 

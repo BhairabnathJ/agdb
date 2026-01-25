@@ -215,8 +215,9 @@ Settings
 
 ### Features:
 
-#### Six Graph Types Generated:
+#### Eleven Graph Types Generated:
 
+**Basic Soil Metrics:**
 1. **graph_vwc.png** - Volumetric Water Content
    - All zones over time
    - Critical/warning thresholds
@@ -237,6 +238,7 @@ Settings
    - MAD threshold (50%)
    - Critical threshold (75%)
 
+**System Analysis:**
 5. **graph_status.png** - Status Distribution
    - Stacked area chart
    - Shows count of healthy/warning/critical zones
@@ -247,12 +249,57 @@ Settings
    - Bottom: Average VWC per phase
    - Phase names and durations
 
+7. **graph_raw.png** - Raw ADC Sensor Readings
+   - Direct sensor output before processing
+   - Hardware diagnostics
+
+**Accuracy & Performance Metrics:** ⭐ NEW
+8. **graph_confidence.png** - Calibration Confidence
+   - Shows auto-calibration accuracy over time
+   - Confidence thresholds (50%, 80%)
+   - Indicates system reliability
+
+9. **graph_drying_rate.png** - Soil Moisture Change Rate
+   - Rate of VWC change (% per hour)
+   - Positive = wetting, Negative = drying
+   - Predictive metric for irrigation timing
+
+10. **graph_temperature.png** - Soil Temperature
+    - Temperature trends over time
+    - Affects ET and sensor accuracy
+    - Diurnal pattern analysis
+
+11. **graph_dashboard.png** - Multi-Metric Dashboard
+    - 6-panel overview of all key metrics
+    - Averaged across all zones
+    - Quick field status assessment
+
 #### Summary Report:
 **simulation_report.txt** - Statistical summary
 - Simulation overview (duration, type)
-- Per-zone statistics (min/max/avg)
-- Status distribution counts
+- Per-zone statistics (min/max/avg for VWC, psi, AW, depletion, confidence, drying rate)
+- Status and regime distribution counts
 - Key metrics summary
+
+### Session Management:
+All graphs are saved to timestamped session folders:
+```
+graphs/
+├── session_20260125_143022/
+│   ├── graph_vwc.png
+│   ├── graph_confidence.png
+│   ├── graph_dashboard.png
+│   ├── ... (8 more graphs)
+│   └── simulation_report.txt
+├── session_20260125_150845/
+│   └── ... (another run)
+```
+
+Benefits:
+- **Never overwrite** previous results
+- **Compare runs** side-by-side
+- **Historical tracking** of simulations
+- **Easy cleanup** - delete old sessions
 
 ### Usage:
 ```bash
@@ -262,7 +309,7 @@ pip3 install -r requirements.txt
 # Run visualization
 python visualize_simulation.py simulation_logs.json
 
-# Output: 6 PNG graphs + 1 TXT report
+# Output: 11 PNG graphs + 1 TXT report in graphs/session_TIMESTAMP/
 ```
 
 ### Customization:
