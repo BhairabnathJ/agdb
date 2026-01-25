@@ -301,3 +301,118 @@ body {
     background: var(--status-healthy);
     color: white;
 }
+
+/* Zone Grid Styles */
+.zone-legend {
+    margin-bottom: 24px;
+}
+
+.legend-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+}
+
+.legend-color {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 1px solid var(--neutral-400);
+}
+
+.zone-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 24px;
+    max-width: 100%;
+}
+
+.zone-cell {
+    aspect-ratio: 1;
+    background: var(--neutral-300);
+    border: 2px solid var(--neutral-400);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-height: 70px;
+}
+
+.zone-cell.inactive {
+    background: var(--neutral-200);
+    border-color: var(--neutral-300);
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.zone-cell.healthy {
+    background: #F1F8E9;
+    border-color: var(--status-healthy);
+}
+
+.zone-cell.warning {
+    background: #FFFDE7;
+    border-color: var(--status-warning);
+}
+
+.zone-cell.critical {
+    background: #FFEBEE;
+    border-color: var(--status-critical);
+}
+
+.zone-cell.selected {
+    box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.3);
+    transform: scale(1.05);
+}
+
+.zone-cell:not(.inactive):hover {
+    transform: scale(1.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.zone-id {
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--neutral-900);
+    margin-bottom: 2px;
+}
+
+.zone-vwc {
+    font-size: 11px;
+    color: var(--neutral-600);
+}
+
+.zone-details {
+    background: var(--neutral-50);
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    border: 2px solid var(--status-healthy);
+}
+
+.sim-countdown {
+    text-align: center;
+    padding: 12px;
+    background: var(--neutral-50);
+    border-radius: 8px;
+    margin-top: 12px;
+    font-weight: 600;
+    color: var(--neutral-700);
+}
+
+.action-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}

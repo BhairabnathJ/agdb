@@ -1,321 +1,1069 @@
 /**
- * AgriScan App - Final Feature Complete
- * Supports Tier 1/2/3, Leaf Wetness, SVG Charts, Export, Settings.
- * + Deep Logic: Crop Profiles, Growth Stages, Yield Risk, Irrigation Markers.
+ * AgriScan App - Full Feature Implementation
+ *
+ * Features:
+ * - Tier 1/2/3 views with proper translations
+ * - Zone mapping with multi-sensor simulation
+ * - Comprehensive simulations (Rain, Drought, 10-min Long Run)
+ * - Full console logging for debugging
+ * - Data export with visualization support
  */
 
+// =============================================================================
+// CONFIGURATION
+// =============================================================================
+
 const CROP_DATA = {
-    'maize': { crit: 30, warn: 50, risk: "High (Silking Stage)" },
-    'rice': { crit: 50, warn: 70, risk: "Critical (Panicle Init)" },
-    'wheat': { crit: 20, warn: 40, risk: "Moderate (Tillering)" },
-    'veg': { crit: 35, warn: 55, risk: "Very High (Fruiting)" },
-    'custom': { crit: 30, warn: 50, risk: "Unknown" }
+    'maize': { crit: 30, warn: 50, risk: "High (Silking Stage)", kc: 1.2 },
+    'rice': { crit: 50, warn: 70, risk: "Critical (Panicle Init)", kc: 1.05 },
+    'wheat': { crit: 20, warn: 40, risk: "Moderate (Tillering)", kc: 1.15 },
+    'veg': { crit: 35, warn: 55, risk: "Very High (Fruiting)", kc: 1.0 },
+    'custom': { crit: 30, warn: 50, risk: "Unknown", kc: 1.0 }
 };
+
+// Zone configuration for multi-sensor simulation
+const ZONE_CONFIG = {
+    rows: 4,
+    cols: 4,
+    sensors: [
+        { id: 'A1', row: 0, col: 0, active: true },
+        { id: 'A2', row: 0, col: 1, active: true },
+        { id: 'A3', row: 0, col: 2, active: false },
+        { id: 'A4', row: 0, col: 3, active: true },
+        { id: 'B1', row: 1, col: 0, active: true },
+        { id: 'B2', row: 1, col: 1, active: false },
+        { id: 'B3', row: 1, col: 2, active: true },
+        { id: 'B4', row: 1, col: 3, active: false },
+        { id: 'C1', row: 2, col: 0, active: false },
+        { id: 'C2', row: 2, col: 1, active: true },
+        { id: 'C3', row: 2, col: 2, active: false },
+        { id: 'C4', row: 2, col: 3, active: true },
+        { id: 'D1', row: 3, col: 0, active: false },
+        { id: 'D2', row: 3, col: 1, active: true },
+        { id: 'D3', row: 3, col: 2, active: true },
+        { id: 'D4', row: 3, col: 3, active: false }
+    ]
+};
+
+// =============================================================================
+// LOGGING SYSTEM
+// =============================================================================
+
+const Logger = {
+    enabled: true,
+    history: [],
+    maxHistory: 1000,
+
+    log: function (category, message, data = null) {
+        if (!this.enabled) return;
+
+        const timestamp = new Date().toISOString();
+        const entry = { timestamp, category, message, data };
+
+        this.history.push(entry);
+        if (this.history.length > this.maxHistory) {
+            this.history.shift();
+        }
+
+        const style = this.getStyle(category);
+        if (data) {
+            console.log(`%c[${category}] ${message}`, style, data);
+        } else {
+            console.log(`%c[${category}] ${message}`, style);
+        }
+    },
+
+    getStyle: function (category) {
+        const styles = {
+            'PHYSICS': 'color: #2E7D32; font-weight: bold;',
+            'SIMULATION': 'color: #1976D2; font-weight: bold;',
+            'UI': 'color: #7B1FA2; font-weight: bold;',
+            'DATA': 'color: #F57C00; font-weight: bold;',
+            'ZONE': 'color: #00796B; font-weight: bold;',
+            'I18N': 'color: #5D4037; font-weight: bold;',
+            'ERROR': 'color: #C62828; font-weight: bold;',
+            'CALIBRATION': 'color: #303F9F; font-weight: bold;'
+        };
+        return styles[category] || 'color: #666;';
+    },
+
+    exportLogs: function () {
+        return JSON.stringify(this.history, null, 2);
+    },
+
+    clear: function () {
+        this.history = [];
+        console.clear();
+        console.log('%c[Logger] Logs cleared', 'color: #999;');
+    }
+};
+
+// =============================================================================
+// MOCK API (Simulating ESP32 Web Server)
+// =============================================================================
+
+const MockAPI = {
+    db: [],
+    zones: {},
+    simulationRunning: false,
+    simulationInterval: null,
+    simulationLogs: [],
+
+    init: function () {
+        // Initialize zones
+        ZONE_CONFIG.sensors.forEach(sensor => {
+            if (sensor.active) {
+                this.zones[sensor.id] = {
+                    ...sensor,
+                    history: [],
+                    currentRaw: 600 + Math.random() * 200,
+                    battery: 70 + Math.random() * 30
+                };
+            }
+        });
+        Logger.log('DATA', `Initialized ${Object.keys(this.zones).length} active zones`);
+    },
+
+    inject: function (raw_adc, temp_c, zoneId = 'A1') {
+        const ts = Math.floor(Date.now() / 1000);
+
+        if (typeof Physics === 'undefined' || !Physics.processSensorReading) {
+            Logger.log('ERROR', 'Physics engine not loaded or incompatible');
+            return null;
+        }
+
+        const sample = Physics.processSensorReading(raw_adc, temp_c, ts);
+
+        // Add zone info
+        sample.zoneId = zoneId;
+        sample.battery = this.zones[zoneId]?.battery || 100;
+
+        // Log physics output
+        Logger.log('PHYSICS', `Zone ${zoneId} processed`, {
+            raw: raw_adc,
+            theta: (sample.theta * 100).toFixed(2) + '%',
+            status: sample.status,
+            urgency: sample.urgency,
+            confidence: (sample.confidence * 100).toFixed(1) + '%',
+            regime: sample.regime,
+            psi_kPa: sample.psi_kPa?.toFixed(2)
+        });
+
+        // Store in main DB
+        this.db.push(sample);
+        if (this.db.length > 1000) this.db.shift();
+
+        // Store in zone history
+        if (this.zones[zoneId]) {
+            this.zones[zoneId].history.push(sample);
+            this.zones[zoneId].currentRaw = raw_adc;
+            if (this.zones[zoneId].history.length > 200) {
+                this.zones[zoneId].history.shift();
+            }
+        }
+
+        return sample;
+    },
+
+    seed: function () {
+        Logger.log('DATA', 'Seeding initial data for all zones...');
+        let now = Math.floor(Date.now() / 1000);
+
+        Object.keys(this.zones).forEach(zoneId => {
+            let raw = 500 + Math.random() * 300;
+            for (let i = 0; i < 30; i++) {
+                const t = now - (30 - i) * 600;
+                raw += (Math.random() - 0.48) * 30; // Slight drying trend
+                raw = Math.max(300, Math.min(900, raw));
+
+                if (typeof Physics !== 'undefined' && Physics.processSensorReading) {
+                    const sample = Physics.processSensorReading(raw, 22 + Math.random() * 4, t);
+                    sample.zoneId = zoneId;
+                    sample.battery = this.zones[zoneId].battery;
+                    this.db.push(sample);
+                    this.zones[zoneId].history.push(sample);
+                    this.zones[zoneId].currentRaw = raw;
+                }
+            }
+        });
+
+        Logger.log('DATA', `Seeded ${this.db.length} total samples across ${Object.keys(this.zones).length} zones`);
+    },
+
+    getCurrent: async function (zoneId = null) {
+        if (this.db.length === 0) {
+            this.seed();
+        }
+
+        if (zoneId && this.zones[zoneId]) {
+            const history = this.zones[zoneId].history;
+            return history.length > 0 ? history[history.length - 1] : null;
+        }
+
+        return this.db[this.db.length - 1];
+    },
+
+    getSeries: async function (zoneId = null) {
+        if (zoneId && this.zones[zoneId]) {
+            return this.zones[zoneId].history;
+        }
+        return this.db;
+    },
+
+    getAllZones: function () {
+        const zoneStatus = {};
+        Object.keys(this.zones).forEach(zoneId => {
+            const history = this.zones[zoneId].history;
+            const latest = history.length > 0 ? history[history.length - 1] : null;
+            zoneStatus[zoneId] = {
+                ...this.zones[zoneId],
+                latest: latest
+            };
+        });
+        return zoneStatus;
+    },
+
+    getGlobalStatus: function () {
+        const zones = this.getAllZones();
+        let worstUrgency = 'none';
+        let criticalCount = 0;
+        let warningCount = 0;
+
+        Object.values(zones).forEach(zone => {
+            if (zone.latest) {
+                if (zone.latest.urgency === 'high') {
+                    worstUrgency = 'high';
+                    criticalCount++;
+                } else if (zone.latest.urgency === 'medium' && worstUrgency !== 'high') {
+                    worstUrgency = 'medium';
+                    warningCount++;
+                }
+            }
+        });
+
+        return { worstUrgency, criticalCount, warningCount, totalZones: Object.keys(zones).length };
+    }
+};
+
+// =============================================================================
+// SIMULATION ENGINE
+// =============================================================================
+
+const Simulator = {
+    running: false,
+    currentSim: null,
+    interval: null,
+    logs: [],
+    startTime: null,
+    tickCount: 0,
+
+    // Rain simulation - rapid wetting across zones
+    simulateRain: function () {
+        if (this.running) {
+            Logger.log('SIMULATION', 'Stopping current simulation first...');
+            this.stop();
+        }
+
+        Logger.log('SIMULATION', '🌧️ Starting RAIN simulation');
+        this.running = true;
+        this.currentSim = 'rain';
+        this.logs = [];
+        this.startTime = Date.now();
+        this.tickCount = 0;
+
+        const zones = Object.keys(MockAPI.zones);
+        let ticksRemaining = 15;
+
+        this.interval = setInterval(() => {
+            this.tickCount++;
+            ticksRemaining--;
+
+            zones.forEach(zoneId => {
+                let raw = MockAPI.zones[zoneId].currentRaw;
+                // Rain decreases raw ADC (increases moisture)
+                const rainIntensity = 80 + Math.random() * 60;
+                raw -= rainIntensity;
+                raw = Math.max(250, raw); // Don't go below saturation
+
+                const sample = MockAPI.inject(raw, 20 + Math.random() * 2, zoneId);
+
+                this.logs.push({
+                    tick: this.tickCount,
+                    time: Date.now() - this.startTime,
+                    zone: zoneId,
+                    raw: raw,
+                    theta: sample?.theta,
+                    status: sample?.status,
+                    urgency: sample?.urgency
+                });
+            });
+
+            Logger.log('SIMULATION', `Rain tick ${this.tickCount}/${15}`, {
+                avgRaw: Math.round(zones.reduce((sum, z) => sum + MockAPI.zones[z].currentRaw, 0) / zones.length)
+            });
+
+            App.updateData();
+
+            if (ticksRemaining <= 0) {
+                this.stop();
+                Logger.log('SIMULATION', '🌧️ Rain simulation complete', {
+                    duration: Date.now() - this.startTime,
+                    totalTicks: this.tickCount
+                });
+            }
+        }, 300);
+    },
+
+    // Drought simulation - gradual drying
+    simulateDrought: function () {
+        if (this.running) {
+            Logger.log('SIMULATION', 'Stopping current simulation first...');
+            this.stop();
+        }
+
+        Logger.log('SIMULATION', '☀️ Starting DROUGHT simulation');
+        this.running = true;
+        this.currentSim = 'drought';
+        this.logs = [];
+        this.startTime = Date.now();
+        this.tickCount = 0;
+
+        const zones = Object.keys(MockAPI.zones);
+        let ticksRemaining = 20;
+
+        this.interval = setInterval(() => {
+            this.tickCount++;
+            ticksRemaining--;
+
+            zones.forEach(zoneId => {
+                let raw = MockAPI.zones[zoneId].currentRaw;
+                // Drought increases raw ADC (decreases moisture)
+                const dryingRate = 20 + Math.random() * 30;
+                raw += dryingRate;
+                raw = Math.min(950, raw); // Don't exceed dry limit
+
+                const sample = MockAPI.inject(raw, 28 + Math.random() * 4, zoneId);
+
+                this.logs.push({
+                    tick: this.tickCount,
+                    time: Date.now() - this.startTime,
+                    zone: zoneId,
+                    raw: raw,
+                    theta: sample?.theta,
+                    status: sample?.status,
+                    urgency: sample?.urgency
+                });
+            });
+
+            Logger.log('SIMULATION', `Drought tick ${this.tickCount}/${20}`, {
+                avgRaw: Math.round(zones.reduce((sum, z) => sum + MockAPI.zones[z].currentRaw, 0) / zones.length)
+            });
+
+            App.updateData();
+
+            if (ticksRemaining <= 0) {
+                this.stop();
+                Logger.log('SIMULATION', '☀️ Drought simulation complete', {
+                    duration: Date.now() - this.startTime,
+                    totalTicks: this.tickCount
+                });
+            }
+        }, 400);
+    },
+
+    // 10-minute long run simulation with realistic patterns
+    simulateLongRun: function () {
+        if (this.running) {
+            Logger.log('SIMULATION', 'Stopping current simulation first...');
+            this.stop();
+        }
+
+        const DURATION_MS = 10 * 60 * 1000; // 10 minutes
+        const TICK_INTERVAL = 2000; // Every 2 seconds
+        const TOTAL_TICKS = DURATION_MS / TICK_INTERVAL;
+
+        Logger.log('SIMULATION', '⏱️ Starting 10-MINUTE LONG RUN simulation', {
+            duration: '10 minutes',
+            tickInterval: '2 seconds',
+            totalTicks: TOTAL_TICKS
+        });
+
+        this.running = true;
+        this.currentSim = 'longrun';
+        this.logs = [];
+        this.startTime = Date.now();
+        this.tickCount = 0;
+
+        const zones = Object.keys(MockAPI.zones);
+
+        // Simulation phases
+        const phases = [
+            { name: 'baseline', start: 0, end: 0.1, trend: 'stable' },
+            { name: 'morning_drying', start: 0.1, end: 0.3, trend: 'drying' },
+            { name: 'irrigation_event', start: 0.3, end: 0.35, trend: 'wetting' },
+            { name: 'drainage', start: 0.35, end: 0.5, trend: 'draining' },
+            { name: 'afternoon_drying', start: 0.5, end: 0.7, trend: 'drying' },
+            { name: 'evening_stable', start: 0.7, end: 0.85, trend: 'stable' },
+            { name: 'night_recovery', start: 0.85, end: 1.0, trend: 'slight_wetting' }
+        ];
+
+        this.interval = setInterval(() => {
+            this.tickCount++;
+            const progress = this.tickCount / TOTAL_TICKS;
+            const elapsedMin = ((Date.now() - this.startTime) / 60000).toFixed(1);
+
+            // Determine current phase
+            const currentPhase = phases.find(p => progress >= p.start && progress < p.end) || phases[phases.length - 1];
+
+            zones.forEach(zoneId => {
+                let raw = MockAPI.zones[zoneId].currentRaw;
+                let temp = 22;
+
+                // Apply phase-specific behavior
+                switch (currentPhase.trend) {
+                    case 'stable':
+                        raw += (Math.random() - 0.5) * 10;
+                        temp = 22 + Math.random() * 2;
+                        break;
+                    case 'drying':
+                        raw += 5 + Math.random() * 15;
+                        temp = 26 + Math.random() * 4;
+                        break;
+                    case 'wetting':
+                        raw -= 40 + Math.random() * 30;
+                        temp = 20 + Math.random() * 2;
+                        break;
+                    case 'draining':
+                        raw += 2 + Math.random() * 8;
+                        temp = 24 + Math.random() * 2;
+                        break;
+                    case 'slight_wetting':
+                        raw -= 2 + Math.random() * 5;
+                        temp = 18 + Math.random() * 2;
+                        break;
+                }
+
+                raw = Math.max(250, Math.min(950, raw));
+
+                const sample = MockAPI.inject(raw, temp, zoneId);
+
+                this.logs.push({
+                    tick: this.tickCount,
+                    time: Date.now() - this.startTime,
+                    elapsed_min: parseFloat(elapsedMin),
+                    phase: currentPhase.name,
+                    zone: zoneId,
+                    raw: Math.round(raw),
+                    temp: temp.toFixed(1),
+                    theta: sample?.theta,
+                    theta_pct: sample?.theta ? (sample.theta * 100).toFixed(2) : null,
+                    psi_kPa: sample?.psi_kPa?.toFixed(2),
+                    AW_mm: sample?.AW_mm?.toFixed(2),
+                    status: sample?.status,
+                    urgency: sample?.urgency,
+                    confidence: sample?.confidence?.toFixed(3),
+                    regime: sample?.regime
+                });
+            });
+
+            // Log progress every 30 seconds
+            if (this.tickCount % 15 === 0) {
+                const globalStatus = MockAPI.getGlobalStatus();
+                Logger.log('SIMULATION', `Long run: ${elapsedMin} min (${(progress * 100).toFixed(0)}%) - Phase: ${currentPhase.name}`, {
+                    worstUrgency: globalStatus.worstUrgency,
+                    critical: globalStatus.criticalCount,
+                    warning: globalStatus.warningCount
+                });
+            }
+
+            App.updateData();
+
+            if (this.tickCount >= TOTAL_TICKS) {
+                this.stop();
+                this.generateReport();
+            }
+        }, TICK_INTERVAL);
+
+        // Show countdown in UI
+        this.updateCountdown(DURATION_MS);
+    },
+
+    updateCountdown: function (remainingMs) {
+        const countdownEl = document.getElementById('sim-countdown');
+        if (countdownEl && this.running) {
+            const elapsed = Date.now() - this.startTime;
+            const remaining = Math.max(0, remainingMs - elapsed);
+            const mins = Math.floor(remaining / 60000);
+            const secs = Math.floor((remaining % 60000) / 1000);
+            countdownEl.textContent = `${mins}:${secs.toString().padStart(2, '0')} remaining`;
+
+            if (remaining > 0) {
+                setTimeout(() => this.updateCountdown(remainingMs), 1000);
+            }
+        }
+    },
+
+    stop: function () {
+        if (this.interval) {
+            clearInterval(this.interval);
+            this.interval = null;
+        }
+        this.running = false;
+        Logger.log('SIMULATION', `Simulation "${this.currentSim}" stopped`, {
+            totalTicks: this.tickCount,
+            totalLogs: this.logs.length
+        });
+    },
+
+    generateReport: function () {
+        Logger.log('SIMULATION', '📊 Generating simulation report...');
+
+        const report = {
+            simulation: this.currentSim,
+            startTime: new Date(this.startTime).toISOString(),
+            endTime: new Date().toISOString(),
+            duration_ms: Date.now() - this.startTime,
+            duration_readable: `${((Date.now() - this.startTime) / 60000).toFixed(1)} minutes`,
+            totalTicks: this.tickCount,
+            totalDataPoints: this.logs.length,
+            zones: Object.keys(MockAPI.zones),
+            summary: this.calculateSummary()
+        };
+
+        Logger.log('SIMULATION', '📊 Report complete', report.summary);
+
+        console.log('%c=== SIMULATION REPORT ===', 'font-size: 16px; font-weight: bold; color: #1976D2;');
+        console.table(report.summary.byZone);
+
+        return report;
+    },
+
+    calculateSummary: function () {
+        const byZone = {};
+        const zones = Object.keys(MockAPI.zones);
+
+        zones.forEach(zoneId => {
+            const zoneLogs = this.logs.filter(l => l.zone === zoneId);
+            const thetaValues = zoneLogs.map(l => l.theta).filter(v => v !== null);
+
+            byZone[zoneId] = {
+                dataPoints: zoneLogs.length,
+                theta_min: (Math.min(...thetaValues) * 100).toFixed(2) + '%',
+                theta_max: (Math.max(...thetaValues) * 100).toFixed(2) + '%',
+                theta_avg: ((thetaValues.reduce((a, b) => a + b, 0) / thetaValues.length) * 100).toFixed(2) + '%',
+                final_status: zoneLogs[zoneLogs.length - 1]?.status,
+                final_urgency: zoneLogs[zoneLogs.length - 1]?.urgency
+            };
+        });
+
+        return {
+            byZone,
+            totalDataPoints: this.logs.length,
+            phasesExecuted: [...new Set(this.logs.map(l => l.phase))].filter(Boolean)
+        };
+    },
+
+    exportLogs: function () {
+        return this.logs;
+    }
+};
+
+// =============================================================================
+// MAIN APP CONTROLLER
+// =============================================================================
 
 const App = {
     state: {
         currentTier: 1,
-        activeZone: 0,
-        zones: [],
+        currentSample: null,
+        selectedZone: null,  // No zone selected by default
+        history: [],
         settings: {
             tempUnit: 'c',
             threshCritical: 30,
             threshWarning: 50,
             crop: 'maize',
             plantingDate: null
-        },
-        decision: 'ALL_GOOD',
-        physics: {}
+        }
     },
 
-    // --- MOCK API (Simulating ESP32 Web Server) ---
-    const MockAPI = {
-        db: [], // In-memory "SQLite"
+    init: function () {
+        Logger.log('UI', 'Initializing AgriScan App...');
 
-        inject: function (raw_adc, temp_c) {
-            const ts = Math.floor(Date.now() / 1000);
-            const sample = Physics.processSensorReading(raw_adc, temp_c, ts);
-            this.db.push(sample);
-            // Keep DB size managed
-            if (this.db.length > 500) this.db.shift();
-            return sample;
-        },
+        // Initialize I18n
+        if (typeof I18n !== 'undefined') {
+            I18n.init();
+        }
+
+        // Initialize MockAPI
+        MockAPI.init();
+
+        this.loadSettings();
+
+        // Set default planting date
+        if (!this.state.settings.plantingDate) {
+            const d = new Date();
+            d.setDate(d.getDate() - 45);
+            this.state.settings.plantingDate = d.toISOString().split('T')[0];
+        }
+
+        // Sync crop thresholds
+        const c = this.state.settings.crop;
+        if (CROP_DATA[c]) {
+            this.state.settings.threshCritical = CROP_DATA[c].crit;
+            this.state.settings.threshWarning = CROP_DATA[c].warn;
+        }
 
         // Seed initial data
-        seed: function () {
-            let now = Math.floor(Date.now() / 1000);
-            let raw = 2200; // Start somewhere middle
-            for (let i = 0; i < 50; i++) {
-                const t = now - (50 - i) * 600; // Every 10 mins
-                raw += (Math.random() - 0.5) * 50;
-                this.db.push(Physics.processSensorReading(raw, 24, t));
-            }
-        },
+        MockAPI.seed();
 
-        getCurrent: async function () {
-            if (this.db.length === 0) this.seed();
-            return this.db[this.db.length - 1];
-        },
+        this.setupListeners();
+        this.renderZoneGrid();
+        this.updateData();
 
-        getSeries: async function (start, end) {
-            return this.db; // Return all for now
-        }
-    };
+        // Polling loop
+        setInterval(() => this.updateData(), 3000);
 
-
-    // --- MAIN APP CONTROLLER ---
-    const App = {
-        state: {
-            currentTier: 1,
-            currentSample: null, // Holds the rich physics object
-            history: [],
-            settings: {
-                tempUnit: 'c',
-                crop: 'maize'
-            }
-        },
-
-        init: function () {
-            I18n.init();
-            MockAPI.seed(); // Start Mock DB
-            this.setupListeners();
-
-            // Polling Loop
-            this.updateData();
-            setInterval(() => this.updateData(), 2000); // Fast polling for simulator feel
-        },
-
-        updateData: async function () {
-            const sample = await MockAPI.getCurrent();
-            this.state.currentSample = sample;
-            this.state.history = await MockAPI.getSeries();
-            this.render();
-        },
-
-        // --- SIMULATION ACTIONS ---
-        simulateRain: function () {
-            // Inject rapid wetting
-            let raw = this.state.currentSample ? this.state.currentSample.raw_adc : 3000;
-            let count = 0;
-            const interval = setInterval(() => {
-                raw -= 150; // Lower ADC = Wetter
-                MockAPI.inject(raw, 24);
-                count++;
-                if (count > 10) clearInterval(interval);
-                this.updateData(); // Force refresh UI
-            }, 200); // Fast burst
-        },
-
-        simulateDrought: function () {
-            // One big dry step
-            let raw = this.state.currentSample ? this.state.currentSample.raw_adc : 2000;
-            raw += 500; // Drier
-            MockAPI.inject(raw, 28);
-            this.updateData();
-        },
-
-        // --- ROUTING / HELPERS ---
-        goToTier: function (tier) {
-            this.state.currentTier = tier;
-            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-            document.getElementById(`tier-${tier}`).classList.add('active');
-            if (tier === 3) this.renderTier3();
-        },
-
-        goToSettings: function () {
-            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-            document.getElementById('settings').classList.add('active');
-
-            const s = this.state.settings;
-            if (document.getElementById('set-crop')) document.getElementById('set-crop').value = s.crop || 'maize';
-            if (document.getElementById('set-date')) document.getElementById('set-date').value = s.plantingDate;
-            if (document.getElementById('set-flow')) document.getElementById('set-flow').value = s.flowRate || 1000;
-        },
-
-        saveSettings: function () {
-            const s = this.state.settings;
-
-            // Crop & Auto-Thresholds (Deep Logic)
-            const cropEl = document.getElementById('set-crop');
-            if (cropEl) {
-                s.crop = cropEl.value;
-                if (CROP_DATA[s.crop]) {
-                    s.threshCritical = CROP_DATA[s.crop].crit;
-                    s.threshWarning = CROP_DATA[s.crop].warn;
-                }
-            }
-
-            const dateEl = document.getElementById('set-date');
-            if (dateEl) s.plantingDate = dateEl.value;
-
-            const flowEl = document.getElementById('set-flow');
-            if (flowEl) s.flowRate = parseFloat(flowEl.value);
-
-            // Crit slider manual override (optional)
-            const critEl = document.getElementById('set-crit-slide');
-            if (critEl) s.threshCritical = parseInt(critEl.value);
-
-            localStorage.setItem('agriscan_settings', JSON.stringify(s));
-            this.updateLoop();
-            alert("Configuration Saved! Thresholds updated for " + s.crop);
-            this.goToTier(3);
-        },
-
-        loadSettings: function () {
-            const saved = localStorage.getItem('agriscan_settings');
-            if (saved) {
-                try {
-                    this.state.settings = { ...this.state.settings, ...JSON.parse(saved) };
-                } catch (e) { console.warn("Settings parse error", e); }
-            }
-        },
-
-        getDaysAfterPlanting: function () {
-            if (!this.state.settings.plantingDate) return 0;
-            const start = new Date(this.state.settings.plantingDate);
-            const now = new Date();
-            const diff = now - start;
-            return Math.floor(diff / (1000 * 60 * 60 * 24));
-        },
-
-        setLang: function (code) {
-            if (I18n.setLang(code)) this.render();
-        },
-
-        // --- RENDERING ---
-        render: function () {
-            if (!this.state.currentSample) return;
-            this.renderTier1();
-            this.renderTier2();
-            if (this.state.currentTier === 3) this.renderTier3();
-        },
-
-        renderTier1: function () {
-            const s = this.state.currentSample;
-            const statusIcon = document.getElementById('t1-status-icon');
-            const msgEl = document.getElementById('t1-message');
-            const instrEl = document.getElementById('t1-instruction');
-            const timeEl = document.getElementById('t1-time');
-
-            statusIcon.className = 'status-circle-large';
-
-            // Map Schema 'urgency' to UI
-            if (s.urgency === 'high') {
-                statusIcon.classList.add('critical');
-                msgEl.textContent = s.status; // "CRITICAL"
-                instrEl.textContent = "Irrigation Required";
-            } else if (s.urgency === 'medium') {
-                statusIcon.classList.add('warning');
-                msgEl.textContent = s.status;
-                instrEl.textContent = "Monitor Closely";
-            } else {
-                statusIcon.classList.add('healthy');
-                msgEl.textContent = s.status;
-                instrEl.textContent = "Conditions Optimal";
-            }
-
-            if (timeEl) timeEl.textContent = "Updated: " + new Date(s.timestamp * 1000).toLocaleTimeString();
-        },
-
-        renderTier2: function () {
-            const s = this.state.currentSample;
-            const list = document.getElementById('t2-reasons');
-            list.innerHTML = '';
-
-            const li1 = document.createElement('li');
-            li1.innerHTML = `<strong>VWC is ${(s.theta * 100).toFixed(1)}%</strong>. (FC: ${(s.theta_fc * 100).toFixed(0)}%)`;
-            list.appendChild(li1);
-
-            const li2 = document.createElement('li');
-            li2.textContent = `Regime: ${s.regime.toUpperCase()}`;
-            list.appendChild(li2);
-
-            const li3 = document.createElement('li');
-            li3.textContent = `Calibration Confidence: ${(s.confidence * 100).toFixed(0)}%`;
-            list.appendChild(li3);
-        },
-
-        renderTier3: function () {
-            const s = this.state.currentSample;
-
-            this.setSafeText('t3-moist', (s.theta * 100).toFixed(1) + '%'); // VWC
-            this.setSafeText('t3-soil-temp', s.temp_c.toFixed(1) + '°C');
-            this.setSafeText('t3-air-temp', '--');
-            this.setSafeText('t3-humid', '--');
-            this.setSafeText('t3-vpd', s.psi_kpa + ' kPa'); // Using VPD slot for Psi for now
-            this.setSafeText('t3-ec', s.raw_adc); // Show Raw ADC in EC slot
-            this.setSafeText('t3-leaf', (s.aw_mm).toFixed(0) + ' AW');
-            this.setSafeText('t3-depletion', (s.fraction_depleted * 100).toFixed(0) + '%');
-            this.setSafeText('t3-balance', '--');
-
-            const mCell = document.getElementById('t3-moist-cell');
-            if (s.urgency === 'high') mCell.className = 'metric-cell critical';
-            else if (s.urgency === 'medium') mCell.className = 'metric-cell warning';
-            else mCell.className = 'metric-cell healthy';
-
-            // Update labels via JS if needed or rely on HTML update
-            this.renderChart();
-        },
-
-        renderChart: function () {
-            // Render from this.state.history
-            const container = document.getElementById('tier3-chart');
-            if (!container) return;
-
-            const history = this.state.history;
-            if (history.length < 2) return;
-
-            const W = container.clientWidth || 300;
-            const H = container.clientHeight || 200;
-            const pad = 20;
-
-            const tMin = history[0].timestamp;
-            const tMax = history[history.length - 1].timestamp;
-            // Map Theta 0.0-0.5
-            const vMin = 0; const vMax = 0.5;
-
-            const getX = t => pad + ((t - tMin) / (tMax - tMin)) * (W - 2 * pad);
-            const getY = v => H - pad - ((v - vMin) / (vMax - vMin)) * (H - 2 * pad);
-
-            let d = `M ${getX(history[0].timestamp)} ${getY(history[0].theta)}`;
-            for (let i = 1; i < history.length; i++) {
-                d += ` L ${getX(history[i].timestamp)} ${getY(history[i].theta)}`;
-            }
-
-            container.innerHTML = `
-      <svg width="100%" height="100%">
-        <!-- Grid -->
-        <line x1="${pad}" y1="${getY(0.32)}" x2="${W - pad}" y2="${getY(0.32)}" stroke="blue" stroke-width="1" stroke-dasharray="4" />
-        <text x="${W - pad}" y="${getY(0.32) - 5}" text-anchor="end" font-size="9" fill="blue">FC</text>
-
-        <line x1="${pad}" y1="${getY(0.12)}" x2="${W - pad}" y2="${getY(0.12)}" stroke="red" stroke-width="1" stroke-dasharray="4" />
-        <text x="${W - pad}" y="${getY(0.12) - 5}" text-anchor="end" font-size="9" fill="red">WP</text>
-
-        <path d="${d}" fill="none" stroke="#2E7D32" stroke-width="2" />
-        <line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="#ccc" />
-        <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H - pad}" stroke="#ccc" />
-      </svg>
-    `;
-        },
+        Logger.log('UI', 'App initialization complete', {
+            zones: Object.keys(MockAPI.zones).length,
+            samples: MockAPI.db.length
+        });
     },
 
-    exportCSV: function () {
-        let csv = "ZoneID,Metric,Value,Unit\n";
-        this.state.zones.forEach(z => {
-            csv += `${z.id},Moisture,${z.moisture.toFixed(1)},%\n`;
-            csv += `${z.id},LeafWet,${z.leafWetness.toFixed(1)},%\n`;
-            csv += `${z.id},Temp,${z.temp.toFixed(1)},C\n`;
+    updateData: async function () {
+        const sample = await MockAPI.getCurrent(this.state.selectedZone);
+        if (sample) {
+            this.state.currentSample = sample;
+            this.state.history = await MockAPI.getSeries(this.state.selectedZone);
+            this.render();
+        }
+    },
+
+    // --- NAVIGATION ---
+    goToTier: function (tier) {
+        this.state.currentTier = tier;
+        document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+        const tierEl = document.getElementById(`tier-${tier}`);
+        if (tierEl) {
+            tierEl.classList.add('active');
+            Logger.log('UI', `Navigated to Tier ${tier}`);
+        }
+        if (tier === 3) this.renderTier3();
+        if (tier === 'map') this.renderZoneGrid();
+    },
+
+    goToSettings: function () {
+        document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+        document.getElementById('settings').classList.add('active');
+
+        const s = this.state.settings;
+        if (document.getElementById('set-crop')) document.getElementById('set-crop').value = s.crop || 'maize';
+        if (document.getElementById('set-date')) document.getElementById('set-date').value = s.plantingDate;
+        if (document.getElementById('set-flow')) document.getElementById('set-flow').value = s.flowRate || 1000;
+        if (document.getElementById('set-lang')) document.getElementById('set-lang').value = I18n?.getLang() || 'en';
+    },
+
+    saveSettings: function () {
+        const s = this.state.settings;
+
+        const cropEl = document.getElementById('set-crop');
+        if (cropEl) {
+            s.crop = cropEl.value;
+            if (CROP_DATA[s.crop]) {
+                s.threshCritical = CROP_DATA[s.crop].crit;
+                s.threshWarning = CROP_DATA[s.crop].warn;
+            }
+        }
+
+        const dateEl = document.getElementById('set-date');
+        if (dateEl) s.plantingDate = dateEl.value;
+
+        const flowEl = document.getElementById('set-flow');
+        if (flowEl) s.flowRate = parseFloat(flowEl.value);
+
+        const critEl = document.getElementById('set-crit-slide');
+        if (critEl) s.threshCritical = parseInt(critEl.value);
+
+        localStorage.setItem('agriscan_settings', JSON.stringify(s));
+        Logger.log('UI', 'Settings saved', s);
+        this.updateData();
+        alert("Configuration Saved!");
+        this.goToTier(3);
+    },
+
+    loadSettings: function () {
+        const saved = localStorage.getItem('agriscan_settings');
+        if (saved) {
+            try {
+                this.state.settings = { ...this.state.settings, ...JSON.parse(saved) };
+                Logger.log('UI', 'Settings loaded from localStorage');
+            } catch (e) {
+                Logger.log('ERROR', 'Settings parse error', e);
+            }
+        }
+    },
+
+    goToMap: function () {
+        document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+        document.getElementById('tier-map').classList.add('active');
+        this.renderZoneGrid();
+
+        Logger.log('UI', 'Navigated to Zone Map');
+    },
+
+    getDaysAfterPlanting: function () {
+        if (!this.state.settings.plantingDate) return 0;
+        const start = new Date(this.state.settings.plantingDate);
+        const now = new Date();
+        return Math.floor((now - start) / (1000 * 60 * 60 * 24));
+    },
+
+    setLang: function (code) {
+        if (typeof I18n !== 'undefined' && I18n.setLang(code)) {
+            Logger.log('I18N', `Language changed to ${code}`);
+            this.render();
+        }
+    },
+
+    // --- RENDERING ---
+    render: function () {
+        if (!this.state.currentSample) return;
+        this.renderTier1();
+        this.renderTier2();
+        if (this.state.currentTier === 3) this.renderTier3();
+
+        // Only update zone UI if map section exists and is active
+        const mapSection = document.getElementById('tier-map');
+        if (mapSection && mapSection.classList.contains('active')) {
+            this.updateZoneGridColors();
+            this.renderZoneDetails();
+        }
+    },
+
+    renderTier1: function () {
+        const s = this.state.currentSample;
+        const statusIcon = document.getElementById('t1-status-icon');
+        const msgEl = document.getElementById('t1-message');
+        const instrEl = document.getElementById('t1-instruction');
+        const timeEl = document.getElementById('t1-time');
+
+        if (!statusIcon || !msgEl) return;
+
+        statusIcon.className = 'status-circle-large';
+
+        if (s.urgency === 'high') {
+            statusIcon.classList.add('critical');
+            msgEl.textContent = I18n?.t('status_irrigate') || 'WATER YOUR CROPS';
+            instrEl.textContent = I18n?.t('action_irrigate', { hours: 2 }) || 'Irrigate now';
+        } else if (s.urgency === 'medium') {
+            statusIcon.classList.add('warning');
+            msgEl.textContent = I18n?.t('status_check') || 'CHECK FIELD SOON';
+            instrEl.textContent = I18n?.t('action_check') || 'Monitor moisture';
+        } else {
+            statusIcon.classList.add('healthy');
+            msgEl.textContent = I18n?.t('status_good') || 'ALL GOOD';
+            instrEl.textContent = I18n?.t('action_good') || 'No action needed';
+        }
+
+        if (timeEl) {
+            timeEl.textContent = I18n?.t('updated', { time: new Date(s.timestamp * 1000).toLocaleTimeString() }) ||
+                `Updated: ${new Date(s.timestamp * 1000).toLocaleTimeString()}`;
+        }
+    },
+
+    renderTier2: function () {
+        const s = this.state.currentSample;
+        const list = document.getElementById('t2-reasons');
+        const titleEl = document.querySelector('#tier-2 .view-header h2');
+
+        if (!list) return;
+        list.innerHTML = '';
+
+        // Update title based on status
+        if (titleEl) {
+            if (s.urgency === 'high') {
+                titleEl.textContent = I18n?.t('why_title_irrigate') || 'Why do I need to water?';
+            } else if (s.urgency === 'medium') {
+                titleEl.textContent = I18n?.t('why_title_check') || 'Why should I check the field?';
+            } else {
+                titleEl.textContent = I18n?.t('why_title_good') || 'Why is everything good?';
+            }
+        }
+
+        // VWC Status
+        const li1 = document.createElement('li');
+        li1.innerHTML = `<strong>VWC is ${(s.theta * 100).toFixed(1)}%</strong> (FC: ${(s.theta_fc * 100).toFixed(0)}%)`;
+        list.appendChild(li1);
+
+        // Yield Risk
+        if (s.urgency === 'high') {
+            const liYield = document.createElement('li');
+            liYield.style.color = '#C62828';
+            const cropRisk = CROP_DATA[this.state.settings.crop]?.risk || "Unknown";
+            liYield.innerHTML = `⚠️ <strong>Yield Risk: ${cropRisk}</strong>`;
+            list.appendChild(liYield);
+        }
+
+        // Crop Age
+        const liStage = document.createElement('li');
+        liStage.innerHTML = `Crop Age: <strong>${this.getDaysAfterPlanting()} days</strong>`;
+        list.appendChild(liStage);
+
+        // Regime
+        const li2 = document.createElement('li');
+        li2.textContent = `Regime: ${s.regime?.toUpperCase() || 'UNKNOWN'}`;
+        list.appendChild(li2);
+
+        // Confidence
+        const liConf = document.createElement('li');
+        liConf.innerHTML = `Calibration Confidence: <strong>${(s.confidence * 100).toFixed(0)}%</strong>`;
+        list.appendChild(liConf);
+    },
+
+    renderTier3: function () {
+        const s = this.state.currentSample;
+
+        this.setSafeText('t3-moist', (s.theta * 100).toFixed(1) + '%');
+        this.setSafeText('t3-soil-temp', s.temp_c.toFixed(1) + '°C');
+        this.setSafeText('t3-vpd', s.psi_kPa ? s.psi_kPa.toFixed(1) + ' kPa' : '--');
+        this.setSafeText('t3-ec', s.raw || '--');
+        this.setSafeText('t3-leaf', s.AW_mm ? s.AW_mm.toFixed(1) + ' mm' : '--');
+        this.setSafeText('t3-depletion', s.fractionDepleted ? (s.fractionDepleted * 100).toFixed(0) + '%' : '--');
+
+        const mCell = document.getElementById('t3-moist-cell');
+        if (mCell) {
+            mCell.className = 'metric-cell';
+            if (s.urgency === 'high') mCell.classList.add('critical');
+            else if (s.urgency === 'medium') mCell.classList.add('warning');
+            else mCell.classList.add('healthy');
+        }
+
+        this.renderChart();
+    },
+
+    renderChart: function () {
+        const container = document.getElementById('tier3-chart');
+        if (!container) return;
+
+        const history = this.state.history;
+        if (history.length < 2) return;
+
+        const W = container.clientWidth || 300;
+        const H = container.clientHeight || 200;
+        const pad = 25;
+
+        const tMin = history[0].timestamp;
+        const tMax = history[history.length - 1].timestamp;
+        const vMin = 0, vMax = 0.5;
+
+        const getX = t => pad + ((t - tMin) / (tMax - tMin + 1)) * (W - 2 * pad);
+        const getY = v => H - pad - ((v - vMin) / (vMax - vMin)) * (H - 2 * pad);
+
+        let d = `M ${getX(history[0].timestamp)} ${getY(history[0].theta)}`;
+        let markers = '';
+
+        for (let i = 1; i < history.length; i++) {
+            d += ` L ${getX(history[i].timestamp)} ${getY(history[i].theta)}`;
+            if ((history[i].theta - history[i - 1].theta) > 0.02) {
+                const x = getX(history[i].timestamp);
+                markers += `<line x1="${x}" y1="${pad}" x2="${x}" y2="${H - pad}" stroke="#2196F3" stroke-width="1" stroke-dasharray="2" />`;
+            }
+        }
+
+        container.innerHTML = `
+            <svg width="100%" height="100%" viewBox="0 0 ${W} ${H}">
+                <rect x="${pad}" y="${getY(0.35)}" width="${W - 2 * pad}" height="${getY(0.25) - getY(0.35)}" fill="rgba(46,125,50,0.1)" />
+                <line x1="${pad}" y1="${getY(0.32)}" x2="${W - pad}" y2="${getY(0.32)}" stroke="#2E7D32" stroke-width="1" stroke-dasharray="4" />
+                <text x="${W - pad - 5}" y="${getY(0.32) - 3}" text-anchor="end" font-size="10" fill="#2E7D32">FC</text>
+                <line x1="${pad}" y1="${getY(0.12)}" x2="${W - pad}" y2="${getY(0.12)}" stroke="#C62828" stroke-width="1" stroke-dasharray="4" />
+                <text x="${W - pad - 5}" y="${getY(0.12) - 3}" text-anchor="end" font-size="10" fill="#C62828">WP</text>
+                ${markers}
+                <path d="${d}" fill="none" stroke="#2E7D32" stroke-width="2" />
+                <line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="#ccc" />
+                <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H - pad}" stroke="#ccc" />
+                <text x="${pad}" y="${H - 5}" font-size="10" fill="#666">Start</text>
+                <text x="${W - pad}" y="${H - 5}" text-anchor="end" font-size="10" fill="#666">Now</text>
+            </svg>
+        `;
+    },
+
+    // --- ZONE GRID ---
+    renderZoneGrid: function () {
+        const container = document.getElementById('zone-grid');
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        ZONE_CONFIG.sensors.forEach(sensor => {
+            const cell = document.createElement('div');
+            cell.className = 'zone-cell';
+            cell.id = `zone-${sensor.id}`;
+            cell.textContent = sensor.id;
+
+            if (!sensor.active) {
+                cell.classList.add('inactive');
+            } else {
+                cell.classList.add('healthy');
+                cell.onclick = () => this.selectZone(sensor.id);
+            }
+
+            container.appendChild(cell);
         });
-        const blob = new Blob([csv], { type: 'text/csv' });
+
+        this.updateZoneGridColors();
+        Logger.log('ZONE', 'Zone grid rendered');
+    },
+
+    updateZoneGridColors: function () {
+        const zones = MockAPI.getAllZones();
+
+        Object.keys(zones).forEach(zoneId => {
+            const cell = document.getElementById(`zone-${zoneId}`);
+            if (cell && zones[zoneId].latest) {
+                cell.className = 'zone-cell';
+                const urgency = zones[zoneId].latest.urgency;
+
+                if (urgency === 'high') cell.classList.add('critical');
+                else if (urgency === 'medium') cell.classList.add('warning');
+                else cell.classList.add('healthy');
+
+                if (zoneId === this.state.selectedZone) {
+                    cell.classList.add('selected');
+                }
+            }
+        });
+    },
+
+    renderZoneDetails: function () {
+        const detailsEl = document.getElementById('zone-details');
+        if (!detailsEl) return;
+
+        if (!this.state.selectedZone) {
+            if (detailsEl.style.display !== 'none') {
+                detailsEl.style.display = 'none';
+            }
+            return;
+        }
+
+        const zones = MockAPI.getAllZones();
+        const zone = zones[this.state.selectedZone];
+        if (!zone || !zone.latest) {
+            detailsEl.style.display = 'none';
+            return;
+        }
+
+        const s = zone.latest;
+        detailsEl.style.display = 'block';
+
+        // Update zone name
+        const nameEl = document.getElementById('zone-name');
+        if (nameEl) nameEl.textContent = this.state.selectedZone;
+
+        // Update metrics
+        const vwcEl = document.getElementById('zone-vwc');
+        if (vwcEl) vwcEl.textContent = `${(s.theta * 100).toFixed(1)}%`;
+
+        const psiEl = document.getElementById('zone-psi');
+        if (psiEl) psiEl.textContent = `${s.psi_kPa?.toFixed(1) || '--'} kPa`;
+
+        const awEl = document.getElementById('zone-aw');
+        if (awEl) awEl.textContent = `${s.AW_mm?.toFixed(1) || '--'} mm`;
+
+        const deplEl = document.getElementById('zone-depl');
+        if (deplEl) deplEl.textContent = `${(s.fractionDepleted * 100).toFixed(0)}%`;
+
+        const statusEl = document.getElementById('zone-status');
+        if (statusEl) statusEl.textContent = s.status || '--';
+
+        const regimeEl = document.getElementById('zone-regime');
+        if (regimeEl) regimeEl.textContent = s.regime || '--';
+
+        // Only log on initial selection, not every update
+        // Logger is called from selectZone() instead
+    },
+
+    selectZone: function (zoneId) {
+        this.state.selectedZone = zoneId;
+        Logger.log('ZONE', `Selected zone: ${zoneId}`);
+        this.updateData();
+        this.updateZoneGridColors();
+    },
+
+    clearZoneSelection: function () {
+        this.state.selectedZone = null;
+        const detailsEl = document.getElementById('zone-details');
+        if (detailsEl) detailsEl.style.display = 'none';
+        this.updateZoneGridColors();
+        Logger.log('ZONE', 'Cleared zone selection');
+    },
+
+    // --- SIMULATIONS ---
+    simulateRain: function () {
+        Simulator.simulateRain();
+    },
+
+    simulateDrought: function () {
+        Simulator.simulateDrought();
+    },
+
+    simulateLongRun: function () {
+        Simulator.simulateLongRun();
+    },
+
+    stopSimulation: function () {
+        Simulator.stop();
+    },
+
+    // --- EXPORT ---
+    exportCSV: function () {
+        let csv = "Timestamp,Zone,Raw,Temp,Theta,Theta_Pct,Psi_kPa,AW_mm,Depletion,Status,Urgency,Regime,Confidence\n";
+
+        this.state.history.forEach(h => {
+            csv += `${h.timestamp},${h.zoneId || 'A1'},${h.raw},${h.temp_c?.toFixed(1)},`;
+            csv += `${h.theta?.toFixed(4)},${(h.theta * 100).toFixed(2)},${h.psi_kPa?.toFixed(2)},`;
+            csv += `${h.AW_mm?.toFixed(2)},${h.fractionDepleted?.toFixed(3)},${h.status},`;
+            csv += `${h.urgency},${h.regime},${h.confidence?.toFixed(3)}\n`;
+        });
+
+        this.downloadFile(csv, `agriscan_data_${Date.now()}.csv`, 'text/csv');
+        Logger.log('DATA', `Exported ${this.state.history.length} records to CSV`);
+    },
+
+    exportSimulationLogs: function () {
+        const logs = Simulator.exportLogs();
+        const json = JSON.stringify(logs, null, 2);
+        this.downloadFile(json, `simulation_logs_${Date.now()}.json`, 'application/json');
+        Logger.log('DATA', `Exported ${logs.length} simulation log entries`);
+    },
+
+    exportAllData: function () {
+        const data = {
+            exportTime: new Date().toISOString(),
+            settings: this.state.settings,
+            zones: MockAPI.getAllZones(),
+            allSamples: MockAPI.db,
+            simulationLogs: Simulator.logs,
+            systemLogs: Logger.history
+        };
+
+        const json = JSON.stringify(data, null, 2);
+        this.downloadFile(json, `agriscan_full_export_${Date.now()}.json`, 'application/json');
+        Logger.log('DATA', 'Full data export complete');
+    },
+
+    downloadFile: function (content, filename, type) {
+        const blob = new Blob([content], { type });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `agriscan_${Date.now()}.csv`;
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
     },
 
+    // --- UTILITIES ---
     setSafeText: function (id, text) {
         const el = document.getElementById(id);
         if (el) el.textContent = text;
@@ -325,26 +1073,29 @@ const App = {
         const btnC = document.getElementById('btn-c');
         const btnF = document.getElementById('btn-f');
         if (btnC && btnF) {
-            btnC.addEventListener('click', () => { this.state.settings.tempUnit = 'c'; this.render(); });
-            btnF.addEventListener('click', () => { this.state.settings.tempUnit = 'f'; this.render(); });
-        }
-
-        const sel = document.getElementById('t3-zone-select');
-        if (sel) {
-            this.state.zones.forEach((z, i) => {
-                const opt = document.createElement('option');
-                opt.value = i;
-                opt.textContent = z.name;
-                sel.appendChild(opt);
+            btnC.addEventListener('click', () => {
+                this.state.settings.tempUnit = 'c';
+                btnC.classList.add('active');
+                btnF.classList.remove('active');
+                this.render();
             });
-            sel.addEventListener('change', (e) => {
-                this.state.activeZone = parseInt(e.target.value);
-                this.runPhysicsEngine();
+            btnF.addEventListener('click', () => {
+                this.state.settings.tempUnit = 'f';
+                btnF.classList.add('active');
+                btnC.classList.remove('active');
                 this.render();
             });
         }
     }
 };
 
+// =============================================================================
+// GLOBAL EXPORTS
+// =============================================================================
+
 window.App = App;
+window.Simulator = Simulator;
+window.Logger = Logger;
+window.MockAPI = MockAPI;
+
 document.addEventListener('DOMContentLoaded', () => App.init());

@@ -423,9 +423,3 @@ Please provide **complete, working code** for:
   confidence: 0.75
 }
 ```
-
-Your code should extract these fields and store them in SQLite efficiently.
-
----
-
-**Start with the SQLite schema and db_manager.cpp implementation, then we'll tackle the web server and dashboard integration.**

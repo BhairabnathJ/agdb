@@ -114,14 +114,107 @@
                     <button class="btn-secondary" onclick="App.simulateDrought()"
                         style="color:orange; border-color:orange;">Simulate Drought</button>
                 </div>
+                <div class="action-grid" style="margin-top:12px;">
+                    <button class="btn-secondary" id="btn-long-run" onclick="App.simulateLongRun()"
+                        style="color:#6A1B9A; border-color:#6A1B9A;">10-Min Simulation</button>
+                    <button class="btn-secondary" id="btn-stop-sim" onclick="App.stopSimulation()"
+                        style="color:#C62828; border-color:#C62828;" disabled>Stop</button>
+                </div>
+                <div id="sim-countdown" class="sim-countdown" style="display:none;">
+                    <span id="sim-phase">--</span> | <span id="sim-time">00:00</span>
+                </div>
+                <div class="action-grid" style="margin-top:12px;">
+                    <button class="btn-secondary" onclick="App.exportSimulationLogs()"
+                        style="color:#00695C; border-color:#00695C;">Export Logs (JSON)</button>
+                    <button class="btn-secondary" onclick="App.exportAllData()"
+                        style="color:#37474F; border-color:#37474F;">Export Full Data</button>
+                </div>
             </div>
 
             <!-- Actions -->
             <div class="action-grid">
+                <button class="btn-secondary" onclick="App.goToMap()">View Zone Map</button>
                 <button class="btn-secondary" onclick="App.exportCSV()">Download DB</button>
+            </div>
+            <div class="action-grid" style="margin-top:8px;">
                 <button class="btn-secondary" onclick="App.goToSettings()">View Settings</button>
             </div>
 
+        </section>
+
+
+        <!-- TIER MAP: Zone/Area View -->
+        <section id="tier-map" class="view-section">
+            <div class="view-header">
+                <button class="btn-text" onclick="App.goToTier(3)">‹ Back</button>
+                <h2 class="font-h2">Field Zones</h2>
+            </div>
+
+            <div class="zone-legend">
+                <p style="font-size:14px; color:var(--neutral-600); margin-bottom:16px;">
+                    Select a zone to view detailed sensor data. Gray zones have no sensor.
+                </p>
+                <div class="legend-items">
+                    <div class="legend-item">
+                        <span class="legend-color" style="background:var(--status-healthy);"></span>
+                        <span>Healthy</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-color" style="background:var(--status-warning);"></span>
+                        <span>Warning</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-color" style="background:var(--status-critical);"></span>
+                        <span>Critical</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-color" style="background:var(--neutral-300);"></span>
+                        <span>No Sensor</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Zone Grid (4x4, 9 active sensors) -->
+            <div id="zone-grid" class="zone-grid">
+                <!-- Populated by App.renderZoneGrid() -->
+            </div>
+
+            <!-- Selected Zone Details -->
+            <div id="zone-details" class="zone-details" style="display:none;">
+                <h3 class="font-h3" style="margin-bottom:12px;">Zone <span id="zone-name">--</span></h3>
+                <div class="metrics-grid-dense">
+                    <div class="metric-cell">
+                        <label>VWC</label>
+                        <span id="zone-vwc">--%</span>
+                    </div>
+                    <div class="metric-cell">
+                        <label>Potential</label>
+                        <span id="zone-psi">--kPa</span>
+                    </div>
+                    <div class="metric-cell">
+                        <label>Avail H2O</label>
+                        <span id="zone-aw">--mm</span>
+                    </div>
+                    <div class="metric-cell">
+                        <label>Depletion</label>
+                        <span id="zone-depl">--%</span>
+                    </div>
+                    <div class="metric-cell">
+                        <label>Status</label>
+                        <span id="zone-status">--</span>
+                    </div>
+                    <div class="metric-cell">
+                        <label>Regime</label>
+                        <span id="zone-regime">--</span>
+                    </div>
+                </div>
+                <button class="btn-secondary btn-full" style="margin-top:16px;" onclick="App.clearZoneSelection()">Clear
+                    Selection</button>
+            </div>
+
+            <div class="action-grid" style="margin-top:24px;">
+                <button class="btn-secondary" onclick="App.goToTier(3)">Back to Dashboard</button>
+            </div>
         </section>
 
 

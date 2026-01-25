@@ -1183,3 +1183,31 @@ if (typeof window !== 'undefined') {
         DEFAULT_SOIL
     };
 }
+
+// =============================================================================
+// ADAPTER FOR FIRMWARE COMPATIBILITY (main.cpp)
+// =============================================================================
+
+// Ensure the global 'Physics' object exists as expected by main.cpp
+// main.cpp calls: Physics.processSensorReading(raw, temp, ts)
+
+if (typeof window !== 'undefined' && window.AgriScanPhysics) {
+    // Instantiate the engine
+    window.Physics = new window.AgriScanPhysics.PhysicsEngine();
+
+    // Add legacy helpers if app.js still uses them (it shouldn't, but safe to have)
+    window.Physics.calculateVPD = function (t, h) { return 0.5; };
+    window.Physics.calculateET0 = function (t) { return 4.5; };
+    window.Physics.calculateDryingRate = function (m, t) { return 0.2; };
+    window.Physics.decideAction = function (m, c, w) { return 'ALL_GOOD'; };
+    window.Physics.calculateTimeToCritical = function (m, c, r) { return 12; };
+
+    console.log("Physics Adapter: 'Physics' global initialized for Firmware/App compatibility.");
+}
+
+// For Duktape (where window might not exist but we want global)
+if (typeof window === 'undefined' && typeof PhysicsEngine !== 'undefined') {
+    // In Duktape environment where classes are global
+    // We export a global Physics object
+    var Physics = new PhysicsEngine();
+}
