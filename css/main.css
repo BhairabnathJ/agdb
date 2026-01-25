@@ -1,0 +1,303 @@
+/* =========================================
+   AgriScan Main Styles - Final
+   ========================================= */
+
+:root {
+    --status-critical: #C62828;
+    --status-warning: #F9A825;
+    --status-healthy: #2E7D32;
+    --neutral-900: #111;
+    --neutral-700: #424242;
+    --neutral-600: #666;
+    --neutral-400: #999;
+    --neutral-300: #E0E0E0;
+    --neutral-200: #EEE;
+    --neutral-100: #F7F7F7;
+    --neutral-50: #FAFAFA;
+    --white: #FFF;
+    --space-md: 16px;
+    --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font-family);
+    margin: 0;
+    padding: 0;
+    background: var(--neutral-100);
+    color: var(--neutral-900);
+}
+
+.container {
+    max-width: 480px;
+    margin: 0 auto;
+    min-height: 100vh;
+    background: var(--white);
+    padding: 16px;
+    position: relative;
+}
+
+.view-section {
+    display: none;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.view-section.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+/* Tier 1 */
+.status-hero {
+    display: flex;
+    justify-content: center;
+    padding: 40px 0;
+}
+
+.status-circle-large {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: var(--neutral-300);
+}
+
+.status-circle-large.healthy {
+    background: var(--status-healthy);
+    box-shadow: 0 0 30px rgba(46, 125, 50, 0.4);
+}
+
+.status-circle-large.warning {
+    background: var(--status-warning);
+    box-shadow: 0 0 30px rgba(249, 168, 37, 0.4);
+}
+
+.status-circle-large.critical {
+    background: var(--status-critical);
+    box-shadow: 0 0 30px rgba(198, 40, 40, 0.4);
+}
+
+.hero-title {
+    font-size: 32px;
+    font-weight: 800;
+    text-align: center;
+    margin: 8px 0;
+    color: var(--neutral-900);
+}
+
+.hero-subtitle {
+    font-size: 18px;
+    text-align: center;
+    color: var(--neutral-600);
+    margin-bottom: 40px;
+}
+
+.hero-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 320px;
+    margin: 0 auto;
+}
+
+.hero-footer {
+    margin-top: 60px;
+    text-align: center;
+    color: var(--neutral-400);
+    font-size: 12px;
+}
+
+/* Tier 2 */
+.reasoning-card {
+    background: var(--neutral-50);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 32px;
+    border-left: 4px solid var(--neutral-300);
+}
+
+.reasoning-list li {
+    margin-bottom: 12px;
+    font-size: 16px;
+    color: var(--neutral-700);
+}
+
+/* Tier 3 Grid */
+.metrics-grid-dense {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 24px;
+}
+
+.metric-cell {
+    background: var(--white);
+    border: 1px solid var(--neutral-300);
+    padding: 12px 6px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.metric-cell label {
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--neutral-600);
+}
+
+.metric-cell span {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--neutral-900);
+}
+
+.metric-cell.healthy {
+    border-color: var(--status-healthy);
+    background: #F1F8E9;
+}
+
+.metric-cell.warning {
+    border-color: var(--status-warning);
+    background: #FFFDE7;
+}
+
+.metric-cell.critical {
+    border-color: var(--status-critical);
+    background: #FFEBEE;
+}
+
+.stats-row {
+    display: flex;
+    justify-content: space-between;
+    background: var(--neutral-50);
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 24px;
+}
+
+.stat-val {
+    display: block;
+    font-size: 18px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.stat-label {
+    font-size: 11px;
+    color: var(--neutral-600);
+    text-align: center;
+    display: block;
+}
+
+.chart-container {
+    height: 200px;
+    background: var(--neutral-50);
+    border: 1px solid var(--neutral-300);
+    border-radius: 8px;
+    margin-bottom: 24px;
+}
+
+/* Forms */
+.form-select {
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--neutral-300);
+}
+
+.settings-group {
+    margin-bottom: 24px;
+}
+
+.settings-label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+
+.btn-primary {
+    background: var(--status-healthy);
+    color: white;
+    border: none;
+    font-weight: 600;
+    border-radius: 8px;
+    padding: 16px;
+    cursor: pointer;
+}
+
+.btn-secondary {
+    background: white;
+    color: var(--neutral-900);
+    border: 1px solid var(--neutral-300);
+    font-weight: 600;
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+}
+
+.btn-ghost {
+    background: transparent;
+    color: var(--status-healthy);
+    border: none;
+    font-weight: 600;
+    padding: 12px;
+    cursor: pointer;
+}
+
+.btn-large {
+    font-size: 18px;
+}
+
+.btn-full {
+    width: 100%;
+    margin-bottom: 8px;
+}
+
+.view-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.font-h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0;
+}
+
+.btn-text {
+    background: none;
+    border: none;
+    color: var(--status-healthy);
+    font-weight: 600;
+    margin-right: 16px;
+    cursor: pointer;
+}
+
+/* Toggle */
+.toggle-group {
+    display: flex;
+}
+
+.toggle-group .btn-full {
+    border-radius: 0;
+    margin: 0;
+    border: 1px solid var(--neutral-300);
+}
+
+.toggle-group .btn-full.active {
+    background: var(--status-healthy);
+    color: white;
+}

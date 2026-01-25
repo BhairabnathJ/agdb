@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgriScan - Tiered View</title>
+    <link rel="stylesheet" href="css/main.css">
+</head>
+
+<body>
+
+    <main class="container">
+
+        <!-- TIER 1: Simple Mode (Default) -->
+        <section id="tier-1" class="view-section active">
+            <!-- Status Icon -->
+            <div class="status-hero">
+                <div id="t1-status-icon" class="status-circle-large healthy"></div>
+            </div>
+
+            <!-- Primary Message -->
+            <h1 id="t1-message" class="hero-title">ALL GOOD</h1>
+            <p id="t1-instruction" class="hero-subtitle">No action needed</p>
+
+            <!-- Actions -->
+            <div class="hero-actions">
+                <button class="btn-primary btn-large" onclick="App.goToTier(2)">Why?</button>
+                <button class="btn-secondary btn-large" onclick="App.goToTier(3)">Show Details</button>
+            </div>
+
+            <div class="hero-footer">
+                <span id="t1-time">Last updated: Just now</span>
+                <div style="margin-top:20px;">
+                    <!-- Feature #7: Language Selector -->
+                    <select id="lang-select-t1"
+                        style="font-size:12px; padding:4px; border:1px solid #ccc; border-radius:4px;"
+                        onchange="App.setLang(this.value)">
+                        <option value="en">English</option>
+                        <option value="es">Español</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- TIER 2: Reasoning Mode -->
+        <section id="tier-2" class="view-section">
+            <div class="view-header">
+                <h2 class="font-h2">Why do I need to water?</h2>
+            </div>
+
+            <div class="reasoning-card">
+                <ul class="reasoning-list" id="t2-reasons">
+                    <!-- JS Populated -->
+                </ul>
+            </div>
+
+            <div class="action-stack">
+                <button class="btn-primary btn-full" onclick="App.goToTier(1)">OK, Got It</button>
+                <button class="btn-ghost btn-full" onclick="App.goToTier(3)">Show Technical Details</button>
+            </div>
+        </section>
+
+
+        <!-- TIER 3: Expert Mode -->
+        <section id="tier-3" class="view-section">
+            <div class="view-header">
+                <button class="btn-text" onclick="App.goToTier(1)">‹ Back to Simple View</button>
+            </div>
+
+            <!-- Current Readings Grid (Updated with 9 cells) -->
+            <div class="metrics-grid-dense">
+                <div class="metric-cell healthy" id="t3-moist-cell">
+                    <label>Moist</label>
+                    <span id="t3-moist">--%</span>
+                </div>
+                <div class="metric-cell" id="t3-soil-temp-cell">
+                    <label>S.Temp</label>
+                    <span id="t3-soil-temp">--°C</span>
+                </div>
+                <div class="metric-cell">
+                    <label>A.Temp</label>
+                    <span id="t3-air-temp">--°C</span>
+                </div>
+                <div class="metric-cell">
+                    <label>Humid</label>
+                    <span id="t3-humid">--%</span>
+                </div>
+                <div class="metric-cell">
+                    <label>VPD</label>
+                    <span id="t3-vpd">--</span>
+                </div>
+                <div class="metric-cell">
+                    <label>EC</label>
+                    <span id="t3-ec">--</span>
+                </div>
+                <!-- NEW METRICS -->
+                <div class="metric-cell">
+                    <label>Leaf Wet</label>
+                    <span id="t3-leaf">--%</span>
+                </div>
+                <div class="metric-cell">
+                    <label>Depletion</label>
+                    <span id="t3-depletion">--%</span>
+                </div>
+                <div class="metric-cell">
+                    <label>Balance</label>
+                    <span id="t3-balance">--mm</span>
+                </div>
+            </div>
+
+            <!-- Calculated Metrics -->
+            <div class="stats-row">
+                <div class="stat-item">
+                    <span class="stat-val" id="t3-drying">--%/hr</span>
+                    <span class="stat-label">Drying</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-val" id="t3-et0">--</span>
+                    <span class="stat-label">ET₀</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-val" id="t3-risk">LOW</span>
+                    <span class="stat-label">Risk</span>
+                </div>
+            </div>
+
+            <!-- Chart -->
+            <div class="chart-wrapper">
+                <h3 class="font-h3">24-Hour History</h3>
+                <div class="chart-container" id="tier3-chart">
+                    <!-- SVG Chart -->
+                </div>
+            </div>
+
+            <!-- Recommendation Basis -->
+            <div class="text-block">
+                <h3 class="font-h3">Recommendation Basis</h3>
+                <p id="t3-reason-text" class="text-small text-neutral">
+                    --
+                </p>
+            </div>
+
+            <!-- Actions -->
+            <div class="action-grid">
+                <button class="btn-secondary" onclick="App.exportCSV()">Download CSV</button>
+                <button class="btn-secondary" onclick="App.goToSettings()">View Settings</button>
+            </div>
+
+            <!-- Zone Selector (Multi-Zone) -->
+            <div class="zone-selector">
+                <label>Active Zone:</label>
+                <select id="t3-zone-select" class="form-select-small">
+                    <!-- Populated by JS -->
+                </select>
+            </div>
+        </section>
+
+
+        <!-- SETTINGS INFO -->
+        <section id="settings" class="view-section">
+            <div class="view-header">
+                <button class="btn-text" onclick="App.goToTier(3)">‹ Back</button>
+                <h2 class="font-h2">Settings</h2>
+            </div>
+
+            <!-- Quick Setup -->
+            <div class="settings-group">
+                <h3 class="font-h3">Quick Setup</h3>
+                <label class="settings-label">Crop Type</label>
+                <select class="form-select" id="set-crop">
+                    <option value="maize">Maize (Corn)</option>
+                    <option value="rice">Rice</option>
+                    <option value="wheat">Wheat</option>
+                    <option value="veg">Vegetables</option>
+                    <option value="custom">Custom</option>
+                </select>
+
+                <label class="settings-label" style="margin-top:12px;">Planting Date</label>
+                <input type="date" class="form-select" id="set-date">
+            </div>
+
+            <!-- General -->
+            <div class="settings-group">
+                <label class="settings-label">Language</label>
+                <select class="form-select" id="set-lang" onchange="App.setLang(this.value)">
+                    <option value="en">English</option>
+                    <option value="es">Español</option>
+                </select>
+            </div>
+
+            <div class="settings-group">
+                <label class="settings-label">Temperature Unit</label>
+                <div class="toggle-group">
+                    <button class="btn-full active" id="btn-c">°C</button>
+                    <button class="btn-full" id="btn-f">°F</button>
+                </div>
+            </div>
+
+            <!-- Advanced Config -->
+            <details>
+                <summary style="padding:12px; font-weight:600; color:var(--neutral-600); cursor:pointer;">Advanced
+                    Configuration</summary>
+                <div style="padding:16px; background:var(--neutral-50); border-radius:8px; margin-top:8px;">
+                    <label class="settings-label">Flow Rate (L/hr)</label>
+                    <input type="number" class="form-select" id="set-flow" value="1000">
+
+                    <label class="settings-label" style="margin-top:12px;">Farm Area (Hectares)</label>
+                    <input type="number" class="form-select" id="set-area" value="2.5">
+
+                    <label class="settings-label" style="margin-top:12px;">Water Cost ($/L)</label>
+                    <input type="number" step="0.001" class="form-select" id="set-cost" value="0.05">
+
+                    <hr style="margin:16px 0; border:0; border-top:1px solid #ddd;">
+
+                    <label class="settings-label">Critical Threshold (%)</label>
+                    <input type="range" style="width:100%" min="10" max="40" value="30" id="set-crit-slide"
+                        oninput="document.getElementById('disp-crit-val').innerText = this.value">
+                    <span style="font-size:12px; color:#666;">Value: <span id="disp-crit-val">30</span>%</span>
+                </div>
+            </details>
+
+            <div class="settings-group" style="margin-top:24px;">
+                <label class="settings-label">Device Info</label>
+                <div class="info-box">
+                    <p>Serial: AG-2026-X88</p>
+                    <p>Firmware: v2.5.0</p>
+                    <p>Storage: 45% used</p>
+                </div>
+            </div>
+
+            <button class="btn-primary btn-full" onclick="App.saveSettings()">Save Configuration</button>
+        </section>
+
+    </main>
+
+    <script src="js/physics.js"></script>
+    <script src="js/i18n.js"></script>
+    <script src="js/app.js"></script>
+</body>
+
+</html>
