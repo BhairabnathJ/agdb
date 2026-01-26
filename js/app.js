@@ -264,6 +264,11 @@ const Simulator = {
             this.stop();
         }
 
+        // Enable simulation mode for faster calibration
+        if (typeof Physics !== 'undefined' && Physics.enableSimulationMode) {
+            Physics.enableSimulationMode();
+        }
+
         Logger.log('SIMULATION', '🌧️ Starting RAIN simulation');
         this.running = true;
         this.currentSim = 'rain';
@@ -321,6 +326,11 @@ const Simulator = {
             this.stop();
         }
 
+        // Enable simulation mode for faster calibration
+        if (typeof Physics !== 'undefined' && Physics.enableSimulationMode) {
+            Physics.enableSimulationMode();
+        }
+
         Logger.log('SIMULATION', '☀️ Starting DROUGHT simulation');
         this.running = true;
         this.currentSim = 'drought';
@@ -376,6 +386,11 @@ const Simulator = {
         if (this.running) {
             Logger.log('SIMULATION', 'Stopping current simulation first...');
             this.stop();
+        }
+
+        // Enable simulation mode for faster calibration
+        if (typeof Physics !== 'undefined' && Physics.enableSimulationMode) {
+            Physics.enableSimulationMode();
         }
 
         const DURATION_MS = 10 * 60 * 1000; // 10 minutes
@@ -509,6 +524,12 @@ const Simulator = {
             this.interval = null;
         }
         this.running = false;
+
+        // Disable simulation mode
+        if (typeof Physics !== 'undefined' && Physics.disableSimulationMode) {
+            Physics.disableSimulationMode();
+        }
+
         Logger.log('SIMULATION', `Simulation "${this.currentSim}" stopped`, {
             totalTicks: this.tickCount,
             totalLogs: this.logs.length

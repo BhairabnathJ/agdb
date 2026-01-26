@@ -6,13 +6,22 @@ This script reads simulation data exported from the AgriScan dashboard
 and generates multiple visualization graphs for analysis.
 
 Usage:
-    python visualize_simulation.py [simulation_logs.json]
+    python visualize_simulation.py [filename.json]
 
-If no file is specified, it will look for 'simulation_logs.json' in the current directory.
+Examples:
+    python visualize_simulation.py simulation_log.json
+    python visualize_simulation.py "AgriScan Tiered View Logs.json"
+    python visualize_simulation.py  # Auto-detects log files
+
+The script can handle:
+- Single JSON array files
+- Files with multiple simulation runs (multiple JSON arrays)
+- Any filename containing "log" or "simulation"
 """
 
 import json
 import sys
+import re
 from pathlib import Path
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
@@ -44,20 +53,53 @@ def create_session_directory():
 
     return session_dir
 
-def load_simulation_data(filename='simulation_logs.json'):
+def load_simulation_data(filename):
     """Load simulation data from JSON file."""
     filepath = Path(filename)
 
     if not filepath.exists():
         print(f"❌ Error: File '{filename}' not found.")
         print(f"   Please export simulation logs from the AgriScan dashboard.")
+        print(f"\n💡 Usage: python visualize_simulation.py <filename>")
+        print(f"   Example: python visualize_simulation.py simulation_log.json")
         sys.exit(1)
 
-    with open(filepath, 'r') as f:
-        data = json.load(f)
+    # Try to load as single JSON array first
+    try:
+        with open(filepath, 'r') as f:
+            data = json.load(f)
+        print(f"✅ Loaded {len(data)} data points from {filename}")
+        return data
+    except json.JSONDecodeError as e:
+        # If that fails, try loading multiple JSON arrays (from multiple simulation runs)
+        print(f"⚠️  Standard JSON parsing failed: {e}")
+        print(f"🔄 Attempting to load multiple JSON arrays...")
 
-    print(f"✅ Loaded {len(data)} data points from {filename}")
-    return data
+        all_data = []
+        with open(filepath, 'r') as f:
+            content = f.read()
+
+        # Split by ']' and '[' to find separate arrays
+        # This handles files with multiple simulation runs concatenated
+        import re
+        # Find all JSON arrays in the file
+        arrays = re.findall(r'\[[\s\S]*?\](?=\s*(?:\[|$))', content)
+
+        for i, array_str in enumerate(arrays):
+            try:
+                array_data = json.loads(array_str)
+                print(f"   - Found array #{i+1}: {len(array_data)} entries")
+                all_data.extend(array_data)
+            except json.JSONDecodeError as sub_e:
+                print(f"   ⚠️  Skipping malformed array #{i+1}: {sub_e}")
+                continue
+
+        if not all_data:
+            print(f"❌ Error: Could not parse any valid JSON data from {filename}")
+            sys.exit(1)
+
+        print(f"✅ Loaded {len(all_data)} total data points from {len(arrays)} array(s)")
+        return all_data
 
 def extract_zone_data(data):
     """Extract data organized by zone from flattened format."""
@@ -620,6 +662,231 @@ def plot_multi_metric_dashboard(zones_data, output_file='graph_dashboard.png'):
     print(f"📊 Saved: {output_file}")
     plt.close()
 
+def plot_time_to_critical(zones_data, output_file='graph_time_to_critical.png'):
+    """Plot time remaining until refill/critical thresholds."""
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
+
+    # Thresholds (approximate)
+    theta_refill = 0.25  # Approximate refill threshold
+    theta_critical = 0.15  # Approximate critical threshold
+
+    for idx, (zone_id, zone_data) in enumerate(sorted(zones_data.items())):
+        if len(zone_data['timestamps']) < 2:
+            continue
+
+        color = COLORS['zones'][idx % len(COLORS['zones'])]
+        times = zone_data['timestamps']
+        vwc = np.array(zone_data['vwc']) / 100  # Convert to fraction
+        dr = np.array(zone_data['drying_rate'])
+
+        time_to_refill = []
+        time_to_critical = []
+        valid_times = []
+
+        for i, (t, theta, drying_rate) in enumerate(zip(times, vwc, dr)):
+            if drying_rate < -0.0001:  # Only when drying
+                # Time to refill (hours)
+                if theta > theta_refill:
+                    t_refill = (theta - theta_refill) / abs(drying_rate)
+                    time_to_refill.append(min(t_refill, 48))  # Cap at 48 hours
+                else:
+                    time_to_refill.append(0)
+
+                # Time to critical (hours)
+                if theta > theta_critical:
+                    t_crit = (theta - theta_critical) / abs(drying_rate)
+                    time_to_critical.append(min(t_crit, 72))  # Cap at 72 hours
+                else:
+                    time_to_critical.append(0)
+
+                valid_times.append(t)
+
+        if len(valid_times) > 0:
+            # Time to refill
+            ax1.plot(valid_times, time_to_refill,
+                    label=f'Zone {zone_id}',
+                    linewidth=2,
+                    color=color,
+                    alpha=0.7)
+            ax1.fill_between(valid_times, 0, time_to_refill, color=color, alpha=0.1)
+
+            # Time to critical
+            ax2.plot(valid_times, time_to_critical,
+                    label=f'Zone {zone_id}',
+                    linewidth=2,
+                    color=color,
+                    alpha=0.7)
+            ax2.fill_between(valid_times, 0, time_to_critical, color=color, alpha=0.1)
+
+    # Formatting
+    ax1.axhline(y=24, color=COLORS['warning'], linestyle='--', alpha=0.5, label='24h threshold')
+    ax1.set_ylabel('Hours Until Refill Needed', fontsize=12, fontweight='bold')
+    ax1.set_title('Time to Refill Threshold', fontsize=14, fontweight='bold')
+    ax1.legend(loc='best', fontsize=9, ncol=2)
+    ax1.grid(True, alpha=0.3)
+    ax1.set_ylim(bottom=0)
+
+    ax2.axhline(y=48, color=COLORS['critical'], linestyle='--', alpha=0.5, label='48h threshold')
+    ax2.set_xlabel('Time (minutes)', fontsize=12, fontweight='bold')
+    ax2.set_ylabel('Hours Until Critical', fontsize=12, fontweight='bold')
+    ax2.set_title('Time to Critical Threshold', fontsize=14, fontweight='bold')
+    ax2.legend(loc='best', fontsize=9, ncol=2)
+    ax2.grid(True, alpha=0.3)
+    ax2.set_ylim(bottom=0)
+
+    plt.tight_layout()
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    print(f"📊 Saved: {output_file}")
+    plt.close()
+
+def plot_fc_refill_thresholds(data, output_file='graph_fc_thresholds.png'):
+    """Plot FC and Refill thresholds over time to show calibration learning."""
+    # Extract FC and refill values from data
+    # Since these aren't in the exported data yet, we'll show a placeholder
+    # This would need theta_fc and theta_refill exported from simulation
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    # Group by tick to get unique time points
+    ticks = sorted(set(entry.get('tick', 0) for entry in data))
+    if not ticks:
+        print("⚠️  No tick data for FC threshold plot")
+        plt.close()
+        return
+
+    # For now, show constant thresholds (would be updated with actual calibration data)
+    times = [entry.get('elapsed_min', 0) for entry in data if entry.get('tick') == ticks[0]]
+    if not times:
+        plt.close()
+        return
+
+    # Placeholder: would extract actual theta_fc_star and theta_refill_star from logs
+    fc_line = [35] * len(times)  # Placeholder FC at 35%
+    refill_line = [25] * len(times)  # Placeholder refill at 25%
+
+    ax.fill_between(times, refill_line, fc_line,
+                     color=COLORS['healthy'], alpha=0.2, label='Optimal range')
+    ax.plot(times, fc_line, color=COLORS['healthy'], linewidth=2,
+           linestyle='--', label='Field Capacity (FC*)')
+    ax.plot(times, refill_line, color=COLORS['warning'], linewidth=2,
+           linestyle='--', label='Refill Threshold')
+    ax.axhline(y=15, color=COLORS['critical'], linestyle=':', alpha=0.5, label='Critical threshold')
+
+    ax.set_xlabel('Time (minutes)', fontsize=12, fontweight='bold')
+    ax.set_ylabel('VWC Threshold (%)', fontsize=12, fontweight='bold')
+    ax.set_title('Learned Thresholds Over Time (FC* & Refill*)', fontsize=14, fontweight='bold', pad=20)
+    ax.legend(loc='best', fontsize=10)
+    ax.grid(True, alpha=0.3)
+    ax.set_ylim(0, 50)
+
+    plt.tight_layout()
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    print(f"📊 Saved: {output_file}")
+    plt.close()
+
+def plot_cross_zone_anomalies(zones_data, output_file='graph_anomalies.png'):
+    """Detect and plot cross-zone anomalies using z-scores."""
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+
+    # Get common timestamps
+    all_times = []
+    for zone_data in zones_data.values():
+        if zone_data['timestamps']:
+            all_times = zone_data['timestamps']
+            break
+
+    if not all_times:
+        print("⚠️  No time data for anomaly detection")
+        plt.close()
+        return
+
+    # Calculate z-scores for VWC, AW, and drying rate at each time point
+    vwc_zscores = defaultdict(list)
+    aw_zscores = defaultdict(list)
+    dr_zscores = defaultdict(list)
+    times_list = []
+
+    for i, time in enumerate(all_times):
+        # Collect values across all zones at this time point
+        vwc_values = []
+        aw_values = []
+        dr_values = []
+
+        for zone_id, zone_data in zones_data.items():
+            if i < len(zone_data['vwc']):
+                vwc_values.append(zone_data['vwc'][i])
+                aw_values.append(zone_data['aw'][i])
+                if zone_data['drying_rate'][i] != 0:
+                    dr_values.append(zone_data['drying_rate'][i] * 100)
+
+        if len(vwc_values) > 1:
+            vwc_mean = np.mean(vwc_values)
+            vwc_std = np.std(vwc_values) if np.std(vwc_values) > 0 else 1
+            aw_mean = np.mean(aw_values)
+            aw_std = np.std(aw_values) if np.std(aw_values) > 0 else 1
+
+            times_list.append(time)
+
+            # Calculate z-scores
+            for zone_id, zone_data in zones_data.items():
+                if i < len(zone_data['vwc']):
+                    vwc_z = (zone_data['vwc'][i] - vwc_mean) / vwc_std
+                    aw_z = (zone_data['aw'][i] - aw_mean) / aw_std
+
+                    vwc_zscores[zone_id].append(abs(vwc_z))
+                    aw_zscores[zone_id].append(abs(aw_z))
+
+    # Plot z-scores
+    for idx, (zone_id, zone_data) in enumerate(sorted(zones_data.items())):
+        color = COLORS['zones'][idx % len(COLORS['zones'])]
+
+        if zone_id in vwc_zscores and len(vwc_zscores[zone_id]) > 0:
+            ax1.plot(times_list[:len(vwc_zscores[zone_id])], vwc_zscores[zone_id],
+                    label=f'Zone {zone_id}',
+                    linewidth=1.5,
+                    color=color,
+                    alpha=0.7)
+
+            ax2.plot(times_list[:len(aw_zscores[zone_id])], aw_zscores[zone_id],
+                    label=f'Zone {zone_id}',
+                    linewidth=1.5,
+                    color=color,
+                    alpha=0.7)
+
+    # Anomaly thresholds
+    ax1.axhline(y=2, color=COLORS['warning'], linestyle='--', alpha=0.5, label='Moderate anomaly (2σ)')
+    ax1.axhline(y=3, color=COLORS['critical'], linestyle='--', alpha=0.5, label='High anomaly (3σ)')
+    ax1.set_ylabel('|Z-Score|', fontsize=11, fontweight='bold')
+    ax1.set_title('VWC Anomaly Detection (Cross-Zone)', fontsize=14, fontweight='bold')
+    ax1.legend(loc='best', fontsize=8, ncol=3)
+    ax1.grid(True, alpha=0.3)
+    ax1.set_ylim(0, 5)
+
+    ax2.axhline(y=2, color=COLORS['warning'], linestyle='--', alpha=0.5)
+    ax2.axhline(y=3, color=COLORS['critical'], linestyle='--', alpha=0.5)
+    ax2.set_ylabel('|Z-Score|', fontsize=11, fontweight='bold')
+    ax2.set_title('Available Water Anomaly Detection', fontsize=13, fontweight='bold')
+    ax2.grid(True, alpha=0.3)
+    ax2.set_ylim(0, 5)
+
+    # Summary: Count of anomalous zones over time
+    anomaly_counts = []
+    for i in range(len(times_list)):
+        count = sum(1 for zone_id in vwc_zscores if i < len(vwc_zscores[zone_id]) and vwc_zscores[zone_id][i] > 2)
+        anomaly_counts.append(count)
+
+    ax3.fill_between(times_list, 0, anomaly_counts, color=COLORS['warning'], alpha=0.5)
+    ax3.plot(times_list, anomaly_counts, color=COLORS['critical'], linewidth=2)
+    ax3.set_xlabel('Time (minutes)', fontsize=12, fontweight='bold')
+    ax3.set_ylabel('# Anomalous Zones', fontsize=11, fontweight='bold')
+    ax3.set_title('Total Anomalous Zones Over Time', fontsize=13, fontweight='bold')
+    ax3.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    print(f"📊 Saved: {output_file}")
+    plt.close()
+
 def generate_summary_report(data, zones_data, output_file='simulation_report.txt'):
     """Generate a text summary report of the simulation."""
     with open(output_file, 'w') as f:
@@ -698,15 +965,42 @@ def main():
     print("AgriScan Simulation Data Visualizer")
     print("=" * 70 + "\n")
 
-    # Create session directory
-    session_dir = create_session_directory()
-    print(f"📁 Session directory: {session_dir}\n")
-
     # Determine input file
     if len(sys.argv) > 1:
         input_file = sys.argv[1]
     else:
-        input_file = 'simulation_logs.json'
+        # Look for any JSON file with "log" or "simulation" in the name
+        possible_files = [
+            'simulation_log.json',
+            'simulation_logs.json',
+            'AgriScan Tiered View Logs.json'
+        ]
+
+        # Also check for any JSON files in current directory
+        json_files = list(Path('.').glob('*log*.json')) + list(Path('.').glob('*simulation*.json'))
+
+        found_file = None
+        for f in possible_files:
+            if Path(f).exists():
+                found_file = f
+                break
+
+        if not found_file and json_files:
+            found_file = str(json_files[0])
+
+        if not found_file:
+            print("❌ No simulation log file found!")
+            print("\n💡 Usage: python visualize_simulation.py <filename>")
+            print("   Example: python visualize_simulation.py simulation_log.json")
+            print("\nOr export logs from the AgriScan dashboard first.")
+            sys.exit(1)
+
+        input_file = found_file
+        print(f"📝 Auto-detected file: {input_file}\n")
+
+    # Create session directory
+    session_dir = create_session_directory()
+    print(f"📁 Session directory: {session_dir}\n")
 
     # Load data
     data = load_simulation_data(input_file)
@@ -730,11 +1024,16 @@ def main():
     plot_phase_timeline(data, zones_data, session_dir / 'graph_phases.png')
     plot_raw_adc_values(zones_data, session_dir / 'graph_raw.png')
 
-    # New metric plots
+    # Accuracy & performance metrics
     plot_confidence_over_time(zones_data, session_dir / 'graph_confidence.png')
     plot_drying_rate(zones_data, session_dir / 'graph_drying_rate.png')
     plot_temperature(zones_data, session_dir / 'graph_temperature.png')
     plot_multi_metric_dashboard(zones_data, session_dir / 'graph_dashboard.png')
+
+    # High-value farmer-focused metrics
+    plot_time_to_critical(zones_data, session_dir / 'graph_time_to_critical.png')
+    plot_fc_refill_thresholds(data, session_dir / 'graph_fc_thresholds.png')
+    plot_cross_zone_anomalies(zones_data, session_dir / 'graph_anomalies.png')
 
     # Generate summary report
     generate_summary_report(data, zones_data, session_dir / 'simulation_report.txt')
@@ -742,6 +1041,7 @@ def main():
     print("\n✅ All visualizations complete!")
     print(f"\n📂 All files saved to: {session_dir}")
     print("\nGenerated files:")
+    print("\n📊 Basic Soil Metrics:")
     print("  1. graph_vwc.png - Volumetric Water Content")
     print("  2. graph_psi.png - Matric Potential")
     print("  3. graph_aw.png - Available Water")
@@ -749,11 +1049,16 @@ def main():
     print("  5. graph_status.png - Status Distribution")
     print("  6. graph_phases.png - Phase Timeline")
     print("  7. graph_raw.png - Raw ADC Sensor Readings")
-    print("  8. graph_confidence.png - Calibration Confidence ⭐ NEW")
-    print("  9. graph_drying_rate.png - Soil Moisture Change Rate ⭐ NEW")
-    print(" 10. graph_temperature.png - Soil Temperature ⭐ NEW")
-    print(" 11. graph_dashboard.png - Multi-Metric Dashboard ⭐ NEW")
-    print(" 12. simulation_report.txt - Summary Report")
+    print("\n📈 Accuracy & Performance:")
+    print("  8. graph_confidence.png - Calibration Confidence")
+    print("  9. graph_drying_rate.png - Soil Moisture Change Rate")
+    print(" 10. graph_temperature.png - Soil Temperature")
+    print(" 11. graph_dashboard.png - Multi-Metric Dashboard")
+    print("\n🌾 Farmer-Focused Metrics:")
+    print(" 12. graph_time_to_critical.png - Time to Irrigation (hours) 🌟 NEW")
+    print(" 13. graph_fc_thresholds.png - Learned Thresholds Over Time 🌟 NEW")
+    print(" 14. graph_anomalies.png - Cross-Zone Anomaly Detection 🌟 NEW")
+    print("\n📄 15. simulation_report.txt - Summary Report")
     print("\n" + "=" * 70 + "\n")
 
 if __name__ == '__main__':

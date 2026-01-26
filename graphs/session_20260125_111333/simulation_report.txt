@@ -1,0 +1,107 @@
+======================================================================
+AGRISCAN SIMULATION SUMMARY REPORT
+======================================================================
+
+Total data points: 5400
+Simulation duration: 41.4 minutes
+Phases: afternoon_drying, baseline, drainage, evening_stable, irrigation_event, morning_drying, night_recovery
+
+Active zones: 9
+
+----------------------------------------------------------------------
+ZONE STATISTICS
+----------------------------------------------------------------------
+
+Zone A1:
+  VWC: min=0.0%, max=46.7%, avg=34.1%
+  Matric Potential: min=0.1 kPa, max=97970.4 kPa
+  Available Water: min=0.0 mm, max=113.5 mm
+  Depletion: min=0.0%, max=100.0%
+  Raw ADC: min=250, max=950
+  Confidence: min=48.0%, max=75.8%, avg=60.1%
+  Status distribution: {'FULL': 400, 'REFILL': 198, 'OPTIMAL': 2}
+  Regime distribution: {'drainage': 96, 'stable': 3, 'wetting': 473, 'drydown': 28}
+
+Zone A2:
+  VWC: min=0.0%, max=46.7%, avg=33.9%
+  Matric Potential: min=0.1 kPa, max=97970.4 kPa
+  Available Water: min=0.0 mm, max=113.5 mm
+  Depletion: min=0.0%, max=100.0%
+  Raw ADC: min=250, max=950
+  Confidence: min=48.0%, max=75.8%, avg=60.1%
+  Status distribution: {'FULL': 403, 'REFILL': 196, 'OPTIMAL': 1}
+  Regime distribution: {'drainage': 97, 'stable': 2, 'wetting': 473, 'drydown': 28}
+
+Zone A4:
+  VWC: min=0.0%, max=46.7%, avg=31.8%
+  Matric Potential: min=0.1 kPa, max=97970.4 kPa
+  Available Water: min=0.0 mm, max=113.5 mm
+  Depletion: min=0.0%, max=100.0%
+  Raw ADC: min=250, max=950
+  Confidence: min=48.0%, max=75.8%, avg=60.1%
+  Status distribution: {'REFILL': 199, 'FULL': 399, 'OPTIMAL': 2}
+  Regime distribution: {'drydown': 57, 'drainage': 66, 'stable': 4, 'wetting': 473}
+
+Zone B1:
+  VWC: min=0.0%, max=46.7%, avg=33.8%
+  Matric Potential: min=0.1 kPa, max=97970.4 kPa
+  Available Water: min=0.0 mm, max=113.5 mm
+  Depletion: min=0.0%, max=100.0%
+  Raw ADC: min=250, max=950
+  Confidence: min=48.0%, max=75.8%, avg=60.1%
+  Status distribution: {'REFILL': 200, 'FULL': 399, 'OPTIMAL': 1}
+  Regime distribution: {'drainage': 92, 'stable': 5, 'wetting': 474, 'drydown': 29}
+
+Zone B3:
+  VWC: min=0.0%, max=46.7%, avg=32.7%
+  Matric Potential: min=0.1 kPa, max=97970.4 kPa
+  Available Water: min=0.0 mm, max=113.5 mm
+  Depletion: min=0.0%, max=100.0%
+  Raw ADC: min=250, max=950
+  Confidence: min=48.0%, max=75.8%, avg=60.1%
+  Status distribution: {'REFILL': 200, 'FULL': 399, 'OPTIMAL': 1}
+  Regime distribution: {'drainage': 98, 'stable': 4, 'wetting': 474, 'drydown': 24}
+
+Zone C2:
+  VWC: min=0.0%, max=46.7%, avg=32.9%
+  Matric Potential: min=0.1 kPa, max=97970.4 kPa
+  Available Water: min=0.0 mm, max=113.5 mm
+  Depletion: min=0.0%, max=100.0%
+  Raw ADC: min=250, max=950
+  Confidence: min=48.0%, max=75.8%, avg=60.1%
+  Status distribution: {'REFILL': 200, 'FULL': 400}
+  Regime distribution: {'drainage': 99, 'stable': 4, 'wetting': 474, 'drydown': 23}
+
+Zone C4:
+  VWC: min=0.0%, max=46.7%, avg=33.2%
+  Matric Potential: min=0.1 kPa, max=97970.4 kPa
+  Available Water: min=0.0 mm, max=113.5 mm
+  Depletion: min=0.0%, max=100.0%
+  Raw ADC: min=250, max=950
+  Confidence: min=48.0%, max=75.8%, avg=60.1%
+  Status distribution: {'FULL': 404, 'REFILL': 195, 'OPTIMAL': 1}
+  Regime distribution: {'drainage': 97, 'stable': 3, 'wetting': 474, 'drydown': 26}
+
+Zone D2:
+  VWC: min=0.0%, max=46.7%, avg=32.8%
+  Matric Potential: min=0.1 kPa, max=97970.4 kPa
+  Available Water: min=0.0 mm, max=113.5 mm
+  Depletion: min=0.0%, max=100.0%
+  Raw ADC: min=250, max=950
+  Confidence: min=48.0%, max=75.8%, avg=60.1%
+  Status distribution: {'REFILL': 196, 'FULL': 402, 'OPTIMAL': 2}
+  Regime distribution: {'drainage': 95, 'stable': 4, 'wetting': 475, 'drydown': 26}
+
+Zone D3:
+  VWC: min=0.0%, max=46.7%, avg=32.1%
+  Matric Potential: min=0.1 kPa, max=97970.4 kPa
+  Available Water: min=0.0 mm, max=113.5 mm
+  Depletion: min=0.0%, max=100.0%
+  Raw ADC: min=250, max=950
+  Confidence: min=48.0%, max=75.8%, avg=60.1%
+  Status distribution: {'REFILL': 197, 'FULL': 401, 'OPTIMAL': 2}
+  Regime distribution: {'drainage': 90, 'wetting': 475, 'drydown': 32, 'stable': 3}
+
+======================================================================
+End of Report
+======================================================================

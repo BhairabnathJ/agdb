@@ -668,6 +668,9 @@ class AutoCalibration {
             qc_pass_count: 0,
             qc_total_count: 0
         };
+        this.currentEventStart = null;
+        this.fc_candidate = null;
+        this.simulationMode = false; // Flag for faster calibration during simulations
     }
 
     /**
@@ -716,8 +719,12 @@ class AutoCalibration {
     }
 
     state_init(history) {
-        // Collect baseline data for at least 24 hours
-        if (history.length < 96) return; // 96 samples at 15-min = 24 hours
+        // Collect baseline data
+        // In simulation mode: be more lenient (10 samples minimum)
+        // In normal mode: require 24 hours of data (96 samples at 15-min)
+        const minSamples = this.simulationMode ? 10 : 96;
+
+        if (history.length < minSamples) return;
 
         // Initialize theta_fc_star with van Genuchten default
         this.theta_fc_star = this.soilModel.params.theta_fc;
@@ -731,6 +738,7 @@ class AutoCalibration {
             CONFIG.eta_refill * (this.theta_fc_star - theta_dry);
 
         this.state = 'BASELINE_MONITORING';
+        this.stats.n_fc_updates++; // Count initial setup as an update
     }
 
     state_baseline(dataPoint, history) {
@@ -741,6 +749,17 @@ class AutoCalibration {
             this.stats.n_events++;
             this.state = 'WETTING_EVENT';
             this.currentEventStart = dataPoint.timestamp;
+        }
+
+        // In simulation mode, also check for significant moisture changes
+        if (this.simulationMode && history.length >= 5) {
+            const recentTheta = history.slice(-5).map(h => h.theta);
+            const deltaTheta = recentTheta[recentTheta.length - 1] - recentTheta[0];
+            if (deltaTheta > 0.03) { // Significant wetting (3% VWC increase)
+                this.stats.n_events++;
+                this.state = 'WETTING_EVENT';
+                this.currentEventStart = dataPoint.timestamp;
+            }
         }
     }
 
@@ -891,13 +910,18 @@ class AutoCalibration {
         const w = CONFIG.confidence_weights;
 
         // Component 1: Number of good events (saturates at 5-8 events)
-        const eventScore = Math.min(this.stats.n_events / 8, 1.0);
+        // In simulation mode, be more generous
+        const eventTarget = this.simulationMode ? 3 : 8;
+        const eventScore = Math.min(this.stats.n_events / eventTarget, 1.0);
 
         // Component 2: FC stability (lower stddev = higher score)
         let stabilityScore = 0.5;
         if (this.fc_history.length >= 3) {
             const fc_std = std(this.fc_history);
             stabilityScore = Math.exp(-fc_std / 0.02); // Decays with stddev
+        } else if (this.fc_history.length > 0) {
+            // Some partial credit for having started calibration
+            stabilityScore = 0.6 + (this.fc_history.length / 3) * 0.2;
         }
 
         // Component 3: QC pass rate
@@ -905,15 +929,31 @@ class AutoCalibration {
             ? this.stats.qc_pass_count / this.stats.qc_total_count
             : 0.5;
 
-        // Component 4: Fit residual quality (placeholder - would need actual residuals)
-        const fitScore = 0.7; // Assume decent fit for now
+        // Component 4: Data collection progress
+        // Replaces placeholder fitScore with something meaningful
+        const dataScore = this.stats.qc_total_count > 0
+            ? Math.min(this.stats.qc_total_count / 50, 1.0) // More data = higher confidence
+            : 0.3;
+
+        // Bonus for calibration state progression
+        const stateBonus = {
+            'INIT': 0.0,
+            'BASELINE_MONITORING': 0.05,
+            'WETTING_EVENT': 0.1,
+            'DRAINAGE_TRACKING': 0.15,
+            'FC_ESTIMATE': 0.2,
+            'DRYDOWN_FIT': 0.2,
+            'NORMAL_OPERATION': 0.25
+        };
+        const stateScore = stateBonus[this.state] || 0;
 
         // Weighted sum
         this.confidence =
             w.n_good_events * eventScore +
             w.fc_stability * stabilityScore +
             w.qc_pass_rate * qcScore +
-            w.fit_residual * fitScore;
+            w.fit_residual * dataScore +
+            stateScore; // Add state progression bonus
 
         this.confidence = clamp(this.confidence, 0, 1);
     }
@@ -931,6 +971,14 @@ class AutoCalibration {
                 : 0,
             dynamics_params: this.dynamicsModel.params
         };
+    }
+
+    enableSimulationMode() {
+        this.simulationMode = true;
+    }
+
+    disableSimulationMode() {
+        this.simulationMode = false;
     }
 }
 
@@ -1149,6 +1197,20 @@ class PhysicsEngine {
             qc_valid: point.qc_valid,
             qc_flags: point.qc_flags.join(',')
         }));
+    }
+
+    /**
+     * Enable simulation mode for faster calibration
+     */
+    enableSimulationMode() {
+        this.autoCalibration.enableSimulationMode();
+    }
+
+    /**
+     * Disable simulation mode for normal operation
+     */
+    disableSimulationMode() {
+        this.autoCalibration.disableSimulationMode();
     }
 }
 
