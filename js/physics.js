@@ -1102,7 +1102,10 @@ class PhysicsEngine {
 
             // Calibration
             confidence: calState.confidence,
-            calibration_state: calState.state
+            calibration_state: calState.state,
+
+            // Drainage assessment (uses fitted kd)
+            drainage: this.assessDrainageQuality()
         };
     }
 
@@ -1118,12 +1121,10 @@ class PhysicsEngine {
             };
         }
 
-        // Apply hysteresis to prevent flapping
         const hysteresis = CONFIG.refill_hysteresis;
 
-        // Critical: Below refill point OR rapid drying
-        if (theta < theta_refill - hysteresis ||
-            (dryingRate && dryingRate < -0.002)) { // -0.002 m³/m³/hr = rapid
+        // Critical: moisture has actually dropped below the refill line
+        if (theta < theta_refill - hysteresis) {
             return {
                 state: 'REFILL',
                 recommendation: 'Irrigate now - soil moisture critical',
@@ -1131,7 +1132,17 @@ class PhysicsEngine {
             };
         }
 
-        // Warning: Approaching refill point OR moderate drying
+        // Early warning: rapid drying while already below 90 % of FC
+        // (above 90 % FC rapid drying is normal drainage or ET — not actionable)
+        if (dryingRate && dryingRate < -0.002 && theta < theta_fc * 0.9) {
+            return {
+                state: 'MONITOR',
+                recommendation: 'Rapid drying detected - monitor closely',
+                urgency: 'medium'
+            };
+        }
+
+        // Below FC: moderate drying trend → warn; otherwise still optimal
         if (theta < theta_fc && theta >= theta_refill - hysteresis) {
             if (dryingRate && dryingRate < -0.0005) {
                 return {
@@ -1147,7 +1158,7 @@ class PhysicsEngine {
             };
         }
 
-        // Good: Above FC and stable
+        // At or above FC — always good, regardless of drying speed
         if (theta >= theta_fc) {
             return {
                 state: 'FULL',
@@ -1211,6 +1222,383 @@ class PhysicsEngine {
      */
     disableSimulationMode() {
         this.autoCalibration.disableSimulationMode();
+    }
+
+    // =========================================================================
+    // DRAINAGE PREDICTION & ASSESSMENT  (uses fitted kd)
+    // =========================================================================
+
+    /**
+     * Predict hours until post-rain drainage settles to field capacity.
+     * Model: θ(t) = θ_FC + (θ0 − θ_FC) · e^(−kd · t)
+     * Solves for t when θ(t) = θ_FC + 0.01 (drainage-complete threshold).
+     *
+     * Both arguments are optional: if omitted the method pulls the latest
+     * reading and the calibrated FC from internal state.
+     */
+    predictDrainageCompletion(theta_current, theta_fc) {
+        const kd = this.dynamicsModel.params.kd;
+
+        if (theta_fc === undefined) {
+            const calState = this.autoCalibration.getCalibrationState();
+            theta_fc = calState.theta_fc_star || this.soilModel.params.theta_fc;
+        }
+        if (theta_current === undefined) {
+            if (this.history.length === 0) {
+                return { hours_remaining: null, status: 'no_data', message: 'No sensor data available' };
+            }
+            theta_current = this.history[this.history.length - 1].theta;
+        }
+
+        const excess = theta_current - theta_fc;
+
+        // Already drained — nothing to predict
+        if (excess <= 0.01) {
+            return { hours_remaining: 0, status: 'complete', message: 'Drainage complete — soil at field capacity' };
+        }
+
+        // t = ln(excess / 0.01) / kd
+        const hours_remaining = Math.log(excess / 0.01) / kd;
+
+        let status, message;
+        if (hours_remaining < 2) {
+            status  = 'nearly_done';
+            message = 'Drainage almost complete';
+        } else if (hours_remaining < 24) {
+            status  = 'draining';
+            message = `Draining — about ${Math.round(hours_remaining)} hours to field capacity`;
+        } else {
+            status  = 'slow_drainage';
+            message = `Slow drainage — about ${Math.round(hours_remaining / 24)} day(s) to field capacity`;
+        }
+
+        return {
+            hours_remaining: Math.round(hours_remaining * 10) / 10,
+            status:  status,
+            message: message
+        };
+    }
+
+    /**
+     * Rate the soil's drainage behaviour from the fitted kd value.
+     *   kd < 0.01  →  poor      (clay / compaction)
+     *   kd > 0.15  →  excessive (sandy)
+     *   otherwise  →  good
+     */
+    assessDrainageQuality() {
+        const kd = this.dynamicsModel.params.kd;
+
+        if (kd < 0.01) {
+            return {
+                quality:        'poor',
+                kd:             kd,
+                message:        'Soil drains slowly — possible clay or compaction',
+                recommendation: 'Consider tillage or soil amendment to improve drainage'
+            };
+        }
+        if (kd > 0.15) {
+            return {
+                quality:        'excessive',
+                kd:             kd,
+                message:        'Soil drains very quickly — likely sandy',
+                recommendation: 'Add organic matter to improve water retention'
+            };
+        }
+        return {
+            quality:        'good',
+            kd:             kd,
+            message:        'Soil drainage is healthy',
+            recommendation: 'No drainage action needed'
+        };
+    }
+
+    // =========================================================================
+    // MULTI-DAY PREDICTIONS  (uses fitted ku, β, θ_min)
+    // =========================================================================
+
+    /**
+     * Simulate soil moisture forward N days using the fitted dynamics model.
+     *   Above θ_FC  →  exponential drainage:  dθ/dt = −kd·(θ − θ_FC)
+     *   Below θ_FC  →  power-law drydown:     dθ/dt = −ku·(θ − θ_min)^β
+     *
+     * Uses 6-hour time steps; returns one snapshot per day (day 0 = now).
+     */
+    predictMoisture7Days(days = 7) {
+        const calState  = this.autoCalibration.getCalibrationState();
+        const theta_fc  = calState.theta_fc_star || this.soilModel.params.theta_fc;
+
+        if (this.history.length === 0) return [];
+
+        let theta       = this.history[this.history.length - 1].theta;
+        const dt        = 6;   // hours per step
+        const stepsPerDay = 4; // 24 / 6
+
+        // Day 0 = current reading
+        const predictions = [{
+            day:            0,
+            theta:          Math.round(theta * 1000) / 1000,
+            percent_of_fc:  Math.round((theta / theta_fc) * 1000) / 10
+        }];
+
+        for (let d = 1; d <= days; d++) {
+            for (let step = 0; step < stepsPerDay; step++) {
+                const rate = theta > theta_fc
+                    ? this.dynamicsModel.drainageRate(theta, theta_fc)
+                    : this.dynamicsModel.drydownRate(theta);
+                theta = Math.max(theta + rate * dt, this.dynamicsModel.params.theta_min);
+            }
+            predictions.push({
+                day:            d,
+                theta:          Math.round(theta * 1000) / 1000,
+                percent_of_fc:  Math.round((theta / theta_fc) * 1000) / 10
+            });
+        }
+
+        return predictions;
+    }
+
+    /**
+     * Compare irrigation amounts by simulating how long each one sustains
+     * moisture above θ_refill.  Picks the smallest amount that lasts ≥ 5 days
+     * as the optimal strategy; falls back to the largest amount when none
+     * reach that threshold.
+     *
+     * @param {number[]} amounts_mm      - candidate irrigation depths in mm
+     * @param {number}   root_depth_cm   - root-zone depth in cm
+     */
+    compareIrrigationStrategies(amounts_mm = [20, 30, 40], root_depth_cm = 30) {
+        const calState     = this.autoCalibration.getCalibrationState();
+        const theta_fc     = calState.theta_fc_star || this.soilModel.params.theta_fc;
+        const theta_refill = calState.theta_refill_star;
+
+        if (this.history.length === 0 || !theta_refill) {
+            return {
+                strategies: [],
+                optimal:    null,
+                note:       'Calibration incomplete — cannot compare strategies'
+            };
+        }
+
+        const theta_current = this.history[this.history.length - 1].theta;
+        const theta_s       = this.soilModel.params.theta_s;
+        const dt            = 6;          // hours per step
+        const maxHours      = 30 * 24;    // safety cap: 30 days
+
+        const strategies = amounts_mm.map(amount_mm => {
+            // Irrigation depth → VWC rise: Δθ = depth_mm / (root_depth_cm × 10)
+            const delta_theta = amount_mm / (root_depth_cm * 10);
+            const theta_after = Math.min(theta_current + delta_theta, theta_s);
+
+            let theta = theta_after;
+            let hours = 0;
+
+            while (theta > theta_refill && hours < maxHours) {
+                const rate = theta > theta_fc
+                    ? this.dynamicsModel.drainageRate(theta, theta_fc)
+                    : this.dynamicsModel.drydownRate(theta);
+                theta = Math.max(theta + rate * dt, this.dynamicsModel.params.theta_min);
+                hours += dt;
+            }
+
+            return {
+                amount_mm:        amount_mm,
+                theta_after:      Math.round(theta_after * 1000) / 1000,
+                days_until_refill: Math.round((hours / 24) * 10) / 10,
+                is_optimal:       false   // assigned below
+            };
+        });
+
+        // Optimal: first amount that sustains ≥ 5 days; else the largest
+        let optimalIdx = strategies.length - 1;
+        for (let i = 0; i < strategies.length; i++) {
+            if (strategies[i].days_until_refill >= 5) {
+                optimalIdx = i;
+                break;
+            }
+        }
+        strategies[optimalIdx].is_optimal = true;
+
+        return {
+            strategies: strategies,
+            optimal:    strategies[optimalIdx]
+        };
+    }
+
+    // =========================================================================
+    // FARMER-FRIENDLY TRANSLATIONS
+    // =========================================================================
+
+    /**
+     * Translate the current irrigation status into plain language.
+     * Returns a layered message object usable at any UI tier.
+     */
+    translateStatus() {
+        const map = {
+            FULL:     { emoji: '💧', color: 'blue',   simple: 'Plenty of water', detail: 'Soil is at or above field capacity',        action: 'No action needed',      urgency: 'none'   },
+            OPTIMAL:  { emoji: '✅', color: 'green',  simple: 'Looking good',    detail: 'Moisture is in the ideal range',           action: 'Keep monitoring',       urgency: 'low'    },
+            MONITOR:  { emoji: '👀', color: 'yellow', simple: 'Watch closely',   detail: 'Moisture is dropping — keep an eye on it', action: 'Check again tomorrow',  urgency: 'medium' },
+            REFILL:   { emoji: '🚰', color: 'orange', simple: 'Water soon',      detail: 'Soil moisture is getting low',            action: 'Plan irrigation today', urgency: 'high'   },
+            CRITICAL: { emoji: '🔴', color: 'red',    simple: 'Water now',       detail: 'Soil is too dry — crops at risk',         action: 'Irrigate immediately',  urgency: 'high'   },
+            UNKNOWN:  { emoji: '⏳', color: 'gray',   simple: 'Setting up',      detail: 'System is still learning your soil',      action: 'Wait for calibration',  urgency: 'none'   }
+        };
+
+        if (this.history.length === 0) return map.UNKNOWN;
+
+        const latest  = this.history[this.history.length - 1];
+        const metrics = this.calculateMetrics(latest);
+        return map[metrics.status] || map.UNKNOWN;
+    }
+
+    /**
+     * Translate calibration confidence into a progress report.
+     * Thresholds: Learning (<0.35) → Calibrating (0.35–0.65) → Calibrated (>0.65)
+     */
+    translateCalibration() {
+        const calState       = this.autoCalibration.getCalibrationState();
+        const confidence     = calState.confidence;
+        const eventsCaptured = Math.min(calState.n_events, 8);
+        const eventsTarget   = 8;
+
+        let level, understanding, reliability;
+        if (confidence < 0.35) {
+            level          = 'Learning';
+            understanding  = 'early understanding';
+            reliability    = 'Readings are estimates — check manually';
+        } else if (confidence < 0.65) {
+            level          = 'Calibrating';
+            understanding  = 'good understanding';
+            reliability    = 'Getting more accurate with each rain event';
+        } else {
+            level          = 'Calibrated';
+            understanding  = 'strong understanding';
+            reliability    = 'Readings are reliable';
+        }
+
+        return {
+            level:           level,
+            confidence:      confidence,
+            events_captured: eventsCaptured,
+            events_target:   eventsTarget,
+            message:         `System has ${understanding} (${eventsCaptured} of ${eventsTarget} events captured)`,
+            reliability:     reliability
+        };
+    }
+
+    /**
+     * Convert a drying rate (m³/m³/hr) to a plain-language description.
+     * Positive  → gaining moisture.  Negative → drying at varying speeds.
+     */
+    translateDryingRate(dryingRate_per_hr) {
+        if (dryingRate_per_hr === null || dryingRate_per_hr === undefined) {
+            return 'Drying rate unknown';
+        }
+        if (dryingRate_per_hr >  0.001)  return 'Gaining moisture';
+        if (dryingRate_per_hr > -0.0002) return 'Stable';
+        if (dryingRate_per_hr > -0.0005) return 'Drying very slowly';
+        if (dryingRate_per_hr > -0.001)  return 'Drying slowly';
+        if (dryingRate_per_hr > -0.002)  return 'Drying steadily';
+        return 'Drying rapidly';
+    }
+
+    /**
+     * Generate a single plain-English sentence explaining the current status.
+     * Combines moisture level, drying trend, and calibration confidence.
+     *
+     * @param {object} [metrics] - output of calculateMetrics() (or a full
+     *   sample from processSensorReading which includes .theta).  If omitted
+     *   the method computes it from the latest history entry.
+     */
+    explainWhy(metrics) {
+        if (!metrics) {
+            if (this.history.length === 0) return 'No data available yet.';
+            const latest = this.history[this.history.length - 1];
+            metrics = { ...this.calculateMetrics(latest), theta: latest.theta };
+        }
+
+        // theta lives on the raw data-point; metrics alone may not carry it
+        const theta = metrics.theta !== undefined
+            ? metrics.theta
+            : (this.history.length > 0 ? this.history[this.history.length - 1].theta : null);
+
+        if (theta === null) return 'Not enough data to explain.';
+
+        const theta_fc     = metrics.theta_fc;
+        const pctOfFc      = Math.round((theta / theta_fc) * 100);
+        const dryingRate   = metrics.dryingRate_per_hr;
+        const dryingDesc   = this.translateDryingRate(dryingRate).toLowerCase();
+        const isDryingFast = dryingRate !== null && dryingRate < -0.001;
+        const status       = metrics.status;
+
+        let reason;
+        switch (status) {
+            case 'FULL':
+                reason = `Soil moisture is healthy at ${pctOfFc}% of capacity. No action needed.`;
+                break;
+            case 'OPTIMAL':
+                reason = (dryingRate !== null && dryingRate < -0.0005)
+                    ? `Moisture at ${pctOfFc}% and ${dryingDesc} — still fine for now.`
+                    : `Moisture at ${pctOfFc}% of capacity — crops are comfortable.`;
+                break;
+            case 'MONITOR':
+                reason = `Moisture at ${pctOfFc}% and ${dryingDesc}. Check again tomorrow.`;
+                break;
+            case 'REFILL':
+            case 'CRITICAL':
+                reason = isDryingFast
+                    ? `Water today — moisture at ${pctOfFc}% and dropping fast.`
+                    : `Water today — moisture at ${pctOfFc}% and getting low.`;
+                break;
+            default:
+                reason = 'System is still calibrating. Wait for more sensor data.';
+        }
+
+        // Append caveat when the engine hasn't seen enough events yet
+        if (metrics.confidence < 0.5) {
+            reason += ' (System still calibrating — estimate only.)';
+        }
+
+        return reason;
+    }
+
+    // =========================================================================
+    // FORECAST SUMMARY
+    // =========================================================================
+
+    /**
+     * Produce a day-by-day irrigation forecast in plain language.
+     * Each entry includes the predicted moisture (% of FC), a status label,
+     * and a boolean flag indicating whether water will be needed that day.
+     */
+    getForecastSummary(days = 7) {
+        const predictions  = this.predictMoisture7Days(days);
+        const calState     = this.autoCalibration.getCalibrationState();
+        const theta_fc     = calState.theta_fc_star || this.soilModel.params.theta_fc;
+        const theta_refill = calState.theta_refill_star;
+
+        return predictions.map(p => {
+            let status, needs_water;
+
+            if (!theta_refill) {
+                status      = 'Calibrating';
+                needs_water = false;
+            } else if (p.theta >= theta_fc) {
+                status      = 'Full';
+                needs_water = false;
+            } else if (p.theta >= theta_refill) {
+                status      = 'Good';
+                needs_water = false;
+            } else {
+                status      = 'Needs water';
+                needs_water = true;
+            }
+
+            return {
+                day:         p.day === 0 ? 'Today' : `Day ${p.day}`,
+                moisture:    `${Math.round(p.percent_of_fc)}%`,
+                status:      status,
+                needs_water: needs_water
+            };
+        });
     }
 }
 
