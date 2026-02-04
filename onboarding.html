@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgriScan - Setup</title>
+    <link rel="stylesheet" href="css/main.css">
+    <style>
+        .wizard-container {
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .wizard-step {
+            display: none;
+            flex: 1;
+            flex-direction: column;
+        }
+
+        .wizard-step.active {
+            display: flex;
+        }
+
+        .wizard-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .wizard-logo {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #4CAF50, #8BC34A);
+            border-radius: 20px;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+        }
+
+        .wizard-title {
+            font-size: 28px;
+            font-weight: 600;
+            margin: 0 0 8px 0;
+            color: #1a1a1a;
+        }
+
+        .wizard-subtitle {
+            font-size: 16px;
+            color: #666;
+            margin: 0;
+        }
+
+        .wizard-content {
+            flex: 1;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 14px 16px;
+            font-size: 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            transition: border-color 0.2s;
+            box-sizing: border-box;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+
+        .radio-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .radio-option {
+            display: flex;
+            align-items: center;
+            padding: 14px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .radio-option:hover {
+            border-color: #ccc;
+        }
+
+        .radio-option.selected {
+            border-color: #4CAF50;
+            background: #f1f8e9;
+        }
+
+        .radio-option input {
+            margin-right: 12px;
+            width: 18px;
+            height: 18px;
+        }
+
+        .radio-option span {
+            font-size: 15px;
+        }
+
+        .info-box {
+            background: #E3F2FD;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .info-box h4 {
+            margin: 0 0 12px 0;
+            font-size: 16px;
+            color: #1565C0;
+        }
+
+        .info-box p {
+            margin: 0 0 12px 0;
+            font-size: 14px;
+            color: #333;
+            line-height: 1.5;
+        }
+
+        .info-box p:last-child {
+            margin-bottom: 0;
+        }
+
+        .info-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .info-list li {
+            display: flex;
+            align-items: flex-start;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
+        .info-list li:last-child {
+            border-bottom: none;
+        }
+
+        .info-list .num {
+            width: 28px;
+            height: 28px;
+            background: #4CAF50;
+            color: #fff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 600;
+            margin-right: 14px;
+            flex-shrink: 0;
+        }
+
+        .info-list .text {
+            font-size: 15px;
+            color: #333;
+        }
+
+        .wizard-footer {
+            display: flex;
+            gap: 12px;
+            padding-top: 20px;
+        }
+
+        .btn-wizard {
+            flex: 1;
+            padding: 16px 24px;
+            font-size: 16px;
+            font-weight: 500;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-back {
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            color: #666;
+        }
+
+        .btn-back:hover {
+            background: #eee;
+        }
+
+        .btn-next {
+            background: #4CAF50;
+            border: none;
+            color: #fff;
+        }
+
+        .btn-next:hover {
+            background: #43A047;
+        }
+
+        .success-icon {
+            width: 100px;
+            height: 100px;
+            background: linear-gradient(135deg, #4CAF50, #8BC34A);
+            border-radius: 50%;
+            margin: 0 auto 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+        }
+
+        .success-message {
+            text-align: center;
+        }
+
+        .success-message h2 {
+            font-size: 24px;
+            margin: 0 0 12px 0;
+        }
+
+        .success-message p {
+            font-size: 15px;
+            color: #666;
+            margin: 0;
+            line-height: 1.6;
+        }
+
+        .progress-dots {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 24px;
+        }
+
+        .progress-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #e0e0e0;
+            transition: background 0.3s;
+        }
+
+        .progress-dot.active {
+            background: #4CAF50;
+        }
+
+        .progress-dot.completed {
+            background: #8BC34A;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wizard-container">
+        <!-- Step 1: Welcome -->
+        <div class="wizard-step active" id="step-1">
+            <div class="wizard-header">
+                <div class="wizard-logo">🌱</div>
+                <h1 class="wizard-title">Welcome to AgriScan!</h1>
+                <p class="wizard-subtitle">Let's set up your soil moisture monitoring system.<br>This will take about 2
+                    minutes.</p>
+            </div>
+            <div class="wizard-content">
+                <div class="info-box">
+                    <h4>What you'll need:</h4>
+                    <p>Just answer a few questions about your field and we'll configure the system for you.</p>
+                </div>
+            </div>
+            <div class="wizard-footer">
+                <button class="btn-wizard btn-next" onclick="nextStep(2)">Get Started →</button>
+            </div>
+        </div>
+
+        <!-- Step 2: Device Setup -->
+        <div class="wizard-step" id="step-2">
+            <div class="progress-dots">
+                <span class="progress-dot completed"></span>
+                <span class="progress-dot active"></span>
+                <span class="progress-dot"></span>
+                <span class="progress-dot"></span>
+            </div>
+            <div class="wizard-header" style="margin-bottom:20px;">
+                <h1 class="wizard-title" style="font-size:22px;">Device Setup</h1>
+            </div>
+            <div class="wizard-content">
+                <div class="form-group">
+                    <label class="form-label">Device Name</label>
+                    <input type="text" class="form-input" id="device-name" placeholder="e.g., North Field Sensor">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Root Depth</label>
+                    <div class="radio-group" id="root-depth-group">
+                        <label class="radio-option selected" data-value="30">
+                            <input type="radio" name="root-depth" value="30" checked>
+                            <span>30 cm - Most crops</span>
+                        </label>
+                        <label class="radio-option" data-value="40">
+                            <input type="radio" name="root-depth" value="40">
+                            <span>40 cm - Deep-rooted crops</span>
+                        </label>
+                        <label class="radio-option" data-value="50">
+                            <input type="radio" name="root-depth" value="50">
+                            <span>50 cm - Trees/vines</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Crop Type</label>
+                    <select class="form-input" id="crop-type">
+                        <option value="tomatoes">Tomatoes</option>
+                        <option value="maize">Maize/Corn</option>
+                        <option value="vegetables">General vegetables</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+            </div>
+            <div class="wizard-footer">
+                <button class="btn-wizard btn-back" onclick="nextStep(1)">← Back</button>
+                <button class="btn-wizard btn-next" onclick="nextStep(3)">Next →</button>
+            </div>
+        </div>
+
+        <!-- Step 3: How It Works -->
+        <div class="wizard-step" id="step-3">
+            <div class="progress-dots">
+                <span class="progress-dot completed"></span>
+                <span class="progress-dot completed"></span>
+                <span class="progress-dot active"></span>
+                <span class="progress-dot"></span>
+            </div>
+            <div class="wizard-header" style="margin-bottom:20px;">
+                <h1 class="wizard-title" style="font-size:22px;">How AgriScan Works</h1>
+            </div>
+            <div class="wizard-content">
+                <ul class="info-list">
+                    <li>
+                        <span class="num">1</span>
+                        <span class="text">Sensors measure soil moisture every 15 minutes and log the data</span>
+                    </li>
+                    <li>
+                        <span class="num">2</span>
+                        <span class="text">System learns your field's characteristics (takes 3-8 irrigation
+                            events)</span>
+                    </li>
+                    <li>
+                        <span class="num">3</span>
+                        <span class="text">Dashboard shows exactly when to water based on scientific soil physics</span>
+                    </li>
+                </ul>
+
+                <div class="info-box" style="margin-top:20px; background:#FFF8E1;">
+                    <h4 style="color:#F57C00;">📋 During Calibration:</h4>
+                    <p>• Keep using your normal irrigation schedule</p>
+                    <p>• The system will learn from each rain/irrigation event</p>
+                    <p>• Accuracy improves with each event captured</p>
+                </div>
+            </div>
+            <div class="wizard-footer">
+                <button class="btn-wizard btn-back" onclick="nextStep(2)">← Back</button>
+                <button class="btn-wizard btn-next" onclick="completeSetup()">Finish Setup →</button>
+            </div>
+        </div>
+
+        <!-- Step 4: Complete -->
+        <div class="wizard-step" id="step-4">
+            <div class="progress-dots">
+                <span class="progress-dot completed"></span>
+                <span class="progress-dot completed"></span>
+                <span class="progress-dot completed"></span>
+                <span class="progress-dot active"></span>
+            </div>
+            <div class="wizard-content" style="display:flex; flex-direction:column; justify-content:center; flex:1;">
+                <div class="success-message">
+                    <div class="success-icon">✓</div>
+                    <h2>You're All Set!</h2>
+                    <p>AgriScan is now monitoring your field.<br>Check the dashboard to see current soil moisture.</p>
+                    <div class="info-box" style="margin-top:24px; text-align:left;">
+                        <p><strong>Note:</strong> The system is in "Learning" mode and will calibrate over the next few
+                            weeks as it observes irrigation and drying events.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="wizard-footer">
+                <button class="btn-wizard btn-next" onclick="goToDashboard()">Go to Dashboard →</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentStep = 1;
+
+        function nextStep(step) {
+            document.getElementById(`step-${currentStep}`).classList.remove('active');
+            document.getElementById(`step-${step}`).classList.add('active');
+            currentStep = step;
+        }
+
+        function completeSetup() {
+            // Gather form data
+            const config = {
+                onboarding_complete: true,
+                device_name: document.getElementById('device-name').value || 'AgriScan Sensor',
+                root_depth_cm: parseInt(document.querySelector('input[name="root-depth"]:checked').value),
+                crop_type: document.getElementById('crop-type').value,
+                setup_date: new Date().toISOString(),
+                farmer_name: '',
+                notes: ''
+            };
+
+            // Save to localStorage (simulating ESP32 API)
+            localStorage.setItem('agriscan_user_prefs', JSON.stringify(config));
+
+            console.log('Setup complete:', config);
+
+            // Show completion step
+            nextStep(4);
+        }
+
+        function goToDashboard() {
+            window.location.href = 'index.html';
+        }
+
+        // Radio group selection handling
+        document.querySelectorAll('.radio-group').forEach(group => {
+            group.querySelectorAll('.radio-option').forEach(option => {
+                option.addEventListener('click', () => {
+                    group.querySelectorAll('.radio-option').forEach(o => o.classList.remove('selected'));
+                    option.classList.add('selected');
+                    option.querySelector('input').checked = true;
+                });
+            });
+        });
+    </script>
+</body>
+
+</html>

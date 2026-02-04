@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgriScan - System Diagnostics</title>
+    <link rel="stylesheet" href="css/main.css">
+    <style>
+        .diagnostics-container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .diag-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .diag-header h1 {
+            font-size: 24px;
+            margin: 0;
+        }
+
+        .diag-card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        .diag-card h3 {
+            font-size: 14px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin: 0 0 16px 0;
+        }
+
+        .diag-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .diag-row:last-child {
+            border-bottom: none;
+        }
+
+        .diag-label {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .diag-value {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .diag-value.ok {
+            color: #2E7D32;
+        }
+
+        .diag-value.warning {
+            color: #F9A825;
+        }
+
+        .diag-value.error {
+            color: #C62828;
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .status-dot.green {
+            background: #4CAF50;
+        }
+
+        .status-dot.yellow {
+            background: #FFC107;
+        }
+
+        .status-dot.red {
+            background: #F44336;
+        }
+
+        .status-dot.blue {
+            background: #2196F3;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        .led-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .led-table th,
+        .led-table td {
+            padding: 10px 8px;
+            text-align: left;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .led-table th {
+            color: #888;
+            font-weight: 500;
+        }
+
+        .led-indicator {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .btn-diag {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #fff;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-diag:hover {
+            background: #f5f5f5;
+            border-color: #ccc;
+        }
+
+        .btn-primary-diag {
+            background: #2E7D32;
+            color: #fff;
+            border-color: #2E7D32;
+        }
+
+        .btn-primary-diag:hover {
+            background: #1B5E20;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="diagnostics-container">
+        <!-- Header -->
+        <div class="diag-header">
+            <button class="btn-text" onclick="window.location.href='index.html'">‹ Back</button>
+            <h1>System Diagnostics</h1>
+        </div>
+
+        <!-- SD Card Status -->
+        <div class="diag-card">
+            <h3>SD Card</h3>
+            <div class="diag-row">
+                <span class="diag-label">Status</span>
+                <span class="diag-value ok status-indicator" id="sd-status">
+                    <span class="status-dot green"></span> Working
+                </span>
+            </div>
+            <div class="diag-row">
+                <span class="diag-label">Free Space</span>
+                <span class="diag-value" id="sd-space">31.9 GB / 32 GB</span>
+            </div>
+            <div class="diag-row">
+                <span class="diag-label">Last Write</span>
+                <span class="diag-value" id="sd-last-write">2 seconds ago</span>
+            </div>
+        </div>
+
+        <!-- Sensors Status -->
+        <div class="diag-card">
+            <h3>Sensors</h3>
+            <div class="diag-row">
+                <span class="diag-label">Soil Moisture</span>
+                <span class="diag-value ok" id="sensor-soil">✓ OK (last: 680)</span>
+            </div>
+            <div class="diag-row">
+                <span class="diag-label">Temperature</span>
+                <span class="diag-value ok" id="sensor-temp">✓ OK (last: 22.3°C)</span>
+            </div>
+            <div class="diag-row">
+                <span class="diag-label">Failure Rate</span>
+                <span class="diag-value" id="sensor-failure">0.2% (3/1500)</span>
+            </div>
+        </div>
+
+        <!-- System Status -->
+        <div class="diag-card">
+            <h3>System</h3>
+            <div class="diag-row">
+                <span class="diag-label">Uptime</span>
+                <span class="diag-value" id="sys-uptime">0 hours</span>
+            </div>
+            <div class="diag-row">
+                <span class="diag-label">Memory Free</span>
+                <span class="diag-value" id="sys-memory">145 KB / 320 KB</span>
+            </div>
+            <div class="diag-row">
+                <span class="diag-label">Last Reading</span>
+                <span class="diag-value" id="sys-last-reading">15 seconds ago</span>
+            </div>
+        </div>
+
+        <!-- Calibration Status -->
+        <div class="diag-card">
+            <h3>Calibration</h3>
+            <div class="diag-row">
+                <span class="diag-label">Status</span>
+                <span class="diag-value" id="cal-status">Learning</span>
+            </div>
+            <div class="diag-row">
+                <span class="diag-label">Events Captured</span>
+                <span class="diag-value" id="cal-events">0 of 8</span>
+            </div>
+            <div class="diag-row">
+                <span class="diag-label">Confidence</span>
+                <span class="diag-value" id="cal-confidence">20%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="cal-progress" style="width: 20%"></div>
+            </div>
+        </div>
+
+        <!-- Errors -->
+        <div class="diag-card">
+            <h3>Errors (Last 24h)</h3>
+            <div class="diag-row">
+                <span class="diag-label">Error Count</span>
+                <span class="diag-value ok" id="error-count">0</span>
+            </div>
+        </div>
+
+        <!-- LED Patterns Reference -->
+        <div class="diag-card">
+            <h3>LED Status Indicators</h3>
+            <table class="led-table">
+                <thead>
+                    <tr>
+                        <th>Pattern</th>
+                        <th>Meaning</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="led-indicator" style="background:#4CAF50"></span> Solid Green</td>
+                        <td>Good moisture</td>
+                    </tr>
+                    <tr>
+                        <td><span class="led-indicator" style="background:#FFEB3B"></span> Solid Yellow</td>
+                        <td>Watch moisture</td>
+                    </tr>
+                    <tr>
+                        <td><span class="led-indicator" style="background:#F44336"></span> Solid Red</td>
+                        <td>Water needed</td>
+                    </tr>
+                    <tr>
+                        <td><span class="led-indicator" style="background:#2196F3"></span> Blinking Blue</td>
+                        <td>SD card error</td>
+                    </tr>
+                    <tr>
+                        <td><span class="led-indicator" style="background:#fff; border:1px solid #ccc"></span> Blinking
+                            White</td>
+                        <td>Sensor error</td>
+                    </tr>
+                    <tr>
+                        <td><span class="led-indicator" style="background:#9C27B0"></span> Blinking Purple</td>
+                        <td>System error</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="btn-row">
+            <button class="btn-diag" onclick="downloadLogs()">📥 Download Logs</button>
+            <button class="btn-diag btn-primary-diag" onclick="window.location.href='index.html'">Back to
+                Dashboard</button>
+        </div>
+    </div>
+
+    <script src="js/physics.js"></script>
+    <script src="js/app.js"></script>
+    <script>
+        // Update diagnostics display
+        function updateDiagnostics() {
+            const diag = MockAPI.getDiagnostics();
+
+            // SD Card
+            const sdStatus = document.getElementById('sd-status');
+            if (diag.sd_card.status === 'ok') {
+                sdStatus.innerHTML = '<span class="status-dot green"></span> Working';
+                sdStatus.className = 'diag-value ok status-indicator';
+            } else {
+                sdStatus.innerHTML = '<span class="status-dot red"></span> Error';
+                sdStatus.className = 'diag-value error status-indicator';
+            }
+            document.getElementById('sd-space').textContent = `${diag.sd_card.free_gb} GB / 32 GB`;
+            document.getElementById('sd-last-write').textContent = `${diag.sd_card.last_write_seconds_ago} seconds ago`;
+
+            // Sensors
+            const soilEl = document.getElementById('sensor-soil');
+            if (diag.sensors.soil_status === 'ok') {
+                soilEl.textContent = `✓ OK (last: ${diag.sensors.soil_last_raw})`;
+                soilEl.className = 'diag-value ok';
+            } else {
+                soilEl.textContent = '✗ Error';
+                soilEl.className = 'diag-value error';
+            }
+
+            const tempEl = document.getElementById('sensor-temp');
+            if (diag.sensors.temp_status === 'ok') {
+                tempEl.textContent = `✓ OK (last: ${diag.sensors.temp_last_c.toFixed(1)}°C)`;
+                tempEl.className = 'diag-value ok';
+            } else {
+                tempEl.textContent = '✗ Error';
+                tempEl.className = 'diag-value error';
+            }
+
+            document.getElementById('sensor-failure').textContent = `${diag.sensors.failure_rate_percent}%`;
+
+            // System
+            const hours = diag.system.uptime_hours;
+            let uptimeStr;
+            if (hours < 1) {
+                uptimeStr = `${Math.floor(hours * 60)} minutes`;
+            } else if (hours < 24) {
+                uptimeStr = `${hours.toFixed(1)} hours`;
+            } else {
+                const days = Math.floor(hours / 24);
+                const remHours = Math.floor(hours % 24);
+                uptimeStr = `${days} day${days > 1 ? 's' : ''} ${remHours} hours`;
+            }
+            document.getElementById('sys-uptime').textContent = uptimeStr;
+            document.getElementById('sys-memory').textContent = `${diag.system.memory_free_kb} KB / 320 KB`;
+            document.getElementById('sys-last-reading').textContent = `${diag.system.last_reading_seconds_ago} seconds ago`;
+
+            // Calibration
+            document.getElementById('cal-status').textContent = diag.calibration.status;
+            document.getElementById('cal-events').textContent = `${diag.calibration.events_captured} of 8`;
+            const confPct = Math.round(diag.calibration.confidence * 100);
+            document.getElementById('cal-confidence').textContent = `${confPct}%`;
+            document.getElementById('cal-progress').style.width = `${confPct}%`;
+
+            // Errors
+            const errorEl = document.getElementById('error-count');
+            errorEl.textContent = diag.errors_24h;
+            errorEl.className = diag.errors_24h === 0 ? 'diag-value ok' : 'diag-value warning';
+        }
+
+        function downloadLogs() {
+            // Download physics events
+            const events = PhysicsEventLogger.getEvents();
+            const csv = PhysicsEventLogger.exportCSV();
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `agriscan_physics_events_${Date.now()}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            Logger.log('DATA', `Downloaded ${events.length} physics events`);
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize MockAPI if not already done
+            if (Object.keys(MockAPI.zones).length === 0) {
+                MockAPI.init();
+                MockAPI.seed();
+            }
+
+            updateDiagnostics();
+
+            // Update every 5 seconds
+            setInterval(updateDiagnostics, 5000);
+        });
+    </script>
+</body>
+
+</html>

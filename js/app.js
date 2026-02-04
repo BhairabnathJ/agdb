@@ -99,6 +99,111 @@ const Logger = {
 };
 
 // =============================================================================
+// PHYSICS EVENT LOGGING SYSTEM
+// =============================================================================
+
+const PhysicsEventLogger = {
+    events: [],
+    lastCalState: null,
+    lastTheta: null,
+    wettingThreshold: 0.02, // m³/m³ - minimum jump for wetting event
+
+    /**
+     * Log a physics event (called when calibration events occur)
+     * Simulates POST /api/log_event to ESP32
+     */
+    logEvent: async function (eventType, details, calState) {
+        const event = {
+            timestamp: new Date().toISOString(),
+            event_type: eventType,
+            details: details,
+            cal_state: calState
+        };
+
+        this.events.push(event);
+        Logger.log('PHYSICS_EVENT', `${eventType}: ${details}`, { calState });
+
+        // Simulate API call to ESP32 (in real ESP32, this writes to physics_events.csv)
+        try {
+            // MockAPI.logPhysicsEvent simulates the POST /api/log_event endpoint
+            await MockAPI.logPhysicsEvent(event);
+        } catch (error) {
+            Logger.log('ERROR', 'Failed to log physics event', error);
+        }
+
+        return event;
+    },
+
+    /**
+     * Check for physics events by comparing current state to previous
+     * Called after each sensor reading
+     */
+    checkForEvents: function (sample) {
+        if (!sample || typeof Physics === 'undefined') return;
+
+        const calState = Physics.autoCalibration?.getCalibrationState();
+        if (!calState) return;
+
+        const currentState = calState.state;
+        const theta = sample.theta;
+
+        // Check for wetting event
+        if (this.lastTheta !== null && theta - this.lastTheta >= this.wettingThreshold) {
+            this.logEvent('WETTING_DETECTED', `delta_theta=${(theta - this.lastTheta).toFixed(3)}`, currentState);
+        }
+
+        // Check for calibration state change
+        if (this.lastCalState !== null && this.lastCalState !== currentState) {
+            this.logEvent('STATE_CHANGE', `${this.lastCalState}->${currentState}`, currentState);
+
+            // Log specific events based on new state
+            if (currentState === 'FC_ESTIMATE' && calState.theta_fc_star) {
+                this.logEvent('FC_UPDATE', `theta_fc_star=${calState.theta_fc_star.toFixed(3)}`, currentState);
+            }
+            if (currentState === 'NORMAL_OPERATION' && calState.theta_refill_star) {
+                this.logEvent('REFILL_UPDATE', `theta_refill_star=${calState.theta_refill_star.toFixed(3)}`, currentState);
+            }
+        }
+
+        // Check for FC plateau detection (when transitioning to FC_ESTIMATE)
+        if (currentState === 'FC_ESTIMATE' && this.lastCalState === 'DRAINAGE_TRACKING') {
+            this.logEvent('FC_PLATEAU', `theta_fc=${calState.theta_fc_star?.toFixed(3)}`, currentState);
+        }
+
+        // Update tracking variables
+        this.lastCalState = currentState;
+        this.lastTheta = theta;
+    },
+
+    /**
+     * Export events as CSV string
+     */
+    exportCSV: function () {
+        let csv = 'timestamp,event_type,details,cal_state\n';
+        this.events.forEach(e => {
+            csv += `${e.timestamp},${e.event_type},"${e.details}",${e.cal_state}\n`;
+        });
+        return csv;
+    },
+
+    /**
+     * Get all events
+     */
+    getEvents: function () {
+        return this.events;
+    },
+
+    /**
+     * Clear events
+     */
+    clear: function () {
+        this.events = [];
+        this.lastCalState = null;
+        this.lastTheta = null;
+    }
+};
+
+// =============================================================================
 // MOCK API (Simulating ESP32 Web Server)
 // =============================================================================
 
@@ -161,6 +266,9 @@ const MockAPI = {
                 this.zones[zoneId].history.shift();
             }
         }
+
+        // Check for physics events (wetting, state changes, etc.)
+        PhysicsEventLogger.checkForEvents(sample);
 
         return sample;
     },
@@ -242,6 +350,113 @@ const MockAPI = {
         });
 
         return { worstUrgency, criticalCount, warningCount, totalZones: Object.keys(zones).length };
+    },
+
+    // ==========================================================================
+    // API ENDPOINTS (simulating ESP32 web server)
+    // ==========================================================================
+
+    /**
+     * POST /api/log_event - Log a physics event
+     */
+    logPhysicsEvent: async function (event) {
+        // In real ESP32, this appends to /logs/physics_events.csv
+        // Here we just store it
+        if (!this.physicsEvents) this.physicsEvents = [];
+        this.physicsEvents.push(event);
+        return { success: true };
+    },
+
+    /**
+     * GET /api/diagnostics - Get system diagnostics
+     */
+    getDiagnostics: function () {
+        const uptime = Math.floor((Date.now() - (window.appStartTime || Date.now())) / 1000);
+        const uptimeHours = uptime / 3600;
+
+        // Get calibration state from physics engine
+        let calibration = { status: 'Unknown', confidence: 0, events_captured: 0 };
+        if (typeof Physics !== 'undefined' && Physics.autoCalibration) {
+            const calState = Physics.autoCalibration.getCalibrationState();
+            const conf = calState.confidence || 0;
+            calibration = {
+                status: conf < 0.35 ? 'Learning' : conf < 0.65 ? 'Calibrating' : 'Calibrated',
+                confidence: conf,
+                events_captured: calState.n_events || 0
+            };
+        }
+
+        // Get latest sensor data
+        const latest = this.db.length > 0 ? this.db[this.db.length - 1] : null;
+        const lastReadingSecsAgo = latest ? Math.floor((Date.now() / 1000) - latest.timestamp) : 999;
+
+        return {
+            sd_card: {
+                status: 'ok',
+                free_gb: 31.9,
+                last_write_seconds_ago: 2
+            },
+            sensors: {
+                soil_status: 'ok',
+                soil_last_raw: latest?.raw || 0,
+                temp_status: 'ok',
+                temp_last_c: latest?.temp_c || 0,
+                failure_rate_percent: 0.2
+            },
+            system: {
+                uptime_hours: Math.round(uptimeHours * 10) / 10,
+                memory_free_kb: 145,
+                last_reading_seconds_ago: lastReadingSecsAgo
+            },
+            calibration: calibration,
+            errors_24h: 0
+        };
+    },
+
+    /**
+     * GET /api/config - Get user preferences
+     */
+    getConfig: function () {
+        const stored = localStorage.getItem('agriscan_user_prefs');
+        if (stored) {
+            try {
+                return JSON.parse(stored);
+            } catch (e) {
+                Logger.log('ERROR', 'Config parse error', e);
+            }
+        }
+        // Return default config
+        return {
+            onboarding_complete: false,
+            device_name: '',
+            root_depth_cm: 30,
+            crop_type: 'tomatoes',
+            setup_date: null,
+            farmer_name: '',
+            notes: ''
+        };
+    },
+
+    /**
+     * POST /api/config - Save user preferences
+     */
+    saveConfig: function (config) {
+        try {
+            localStorage.setItem('agriscan_user_prefs', JSON.stringify(config));
+            Logger.log('DATA', 'User config saved', config);
+            return { success: true };
+        } catch (e) {
+            Logger.log('ERROR', 'Failed to save config', e);
+            return { success: false, error: e.message };
+        }
+    },
+
+    /**
+     * GET /api/data?hours=24 - Get historical sensor data
+     */
+    getData: function (hours = 24) {
+        const cutoff = Date.now() / 1000 - (hours * 3600);
+        return this.db.filter(s => s.timestamp >= cutoff);
     }
 };
 
@@ -1084,6 +1299,11 @@ const App = {
         window.URL.revokeObjectURL(url);
     },
 
+    // --- NAVIGATION (Diagnostics) ---
+    goToDiagnostics: function () {
+        window.location.href = 'diagnostics.html';
+    },
+
     // --- UTILITIES ---
     setSafeText: function (id, text) {
         const el = document.getElementById(id);
@@ -1114,9 +1334,13 @@ const App = {
 // GLOBAL EXPORTS
 // =============================================================================
 
+// Track app start time for uptime calculations
+window.appStartTime = Date.now();
+
 window.App = App;
 window.Simulator = Simulator;
 window.Logger = Logger;
 window.MockAPI = MockAPI;
+window.PhysicsEventLogger = PhysicsEventLogger;
 
 document.addEventListener('DOMContentLoaded', () => App.init());
