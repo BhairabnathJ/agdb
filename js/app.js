@@ -897,6 +897,9 @@ const App = {
         if (document.getElementById('set-date')) document.getElementById('set-date').value = s.plantingDate;
         if (document.getElementById('set-flow')) document.getElementById('set-flow').value = s.flowRate || 1000;
         if (document.getElementById('set-lang')) document.getElementById('set-lang').value = I18n?.getLang() || 'en';
+
+        // Auto-refresh live sensor data
+        this.refreshSensorData();
     },
 
     saveSettings: function () {
@@ -1302,6 +1305,47 @@ const App = {
     // --- NAVIGATION (Diagnostics) ---
     goToDiagnostics: function () {
         window.location.href = 'diagnostics.html';
+    },
+
+    // --- LIVE SENSOR DATA OUTPUT ---
+    refreshSensorData: function () {
+        const sample = this.state.currentSample;
+
+        if (sample) {
+            // Update raw ADC value
+            const rawEl = document.getElementById('live-soil-raw');
+            if (rawEl) rawEl.textContent = sample.raw || '--';
+
+            // Update VWC percentage
+            const vwcEl = document.getElementById('live-soil-vwc');
+            if (vwcEl) vwcEl.textContent = sample.theta ? (sample.theta * 100).toFixed(1) + '%' : '--%';
+
+            // Update temperature
+            const tempEl = document.getElementById('live-temp');
+            if (tempEl) {
+                const temp = sample.temp_c || 0;
+                if (this.state.settings.tempUnit === 'f') {
+                    tempEl.textContent = ((temp * 9 / 5) + 32).toFixed(1) + '°F';
+                } else {
+                    tempEl.textContent = temp.toFixed(1) + '°C';
+                }
+            }
+
+            // Update timestamp
+            const tsEl = document.getElementById('live-timestamp');
+            if (tsEl) {
+                const date = new Date(sample.timestamp * 1000);
+                tsEl.textContent = date.toLocaleTimeString();
+            }
+
+            Logger.log('UI', 'Sensor data refreshed', {
+                raw: sample.raw,
+                theta: sample.theta,
+                temp: sample.temp_c
+            });
+        } else {
+            Logger.log('UI', 'No sensor data available');
+        }
     },
 
     // --- UTILITIES ---

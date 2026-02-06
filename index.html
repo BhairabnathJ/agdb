@@ -283,6 +283,32 @@
                 </div>
             </details>
 
+            <!-- Live Sensor Data Output -->
+            <div class="settings-group" style="margin-top:24px;">
+                <label class="settings-label">📡 Live Sensor Data</label>
+                <div class="info-box" style="background:#E8F5E9; border:1px solid #A5D6A7;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
+                        <span style="font-weight:500;">Soil Moisture (Raw ADC)</span>
+                        <span id="live-soil-raw" style="font-family:monospace; font-size:18px; color:#2E7D32;">--</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
+                        <span style="font-weight:500;">Soil Moisture (VWC)</span>
+                        <span id="live-soil-vwc"
+                            style="font-family:monospace; font-size:18px; color:#2E7D32;">--%</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
+                        <span style="font-weight:500;">Temperature Probe</span>
+                        <span id="live-temp" style="font-family:monospace; font-size:18px; color:#1565C0;">--°C</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between;">
+                        <span style="font-weight:500;">Last Updated</span>
+                        <span id="live-timestamp" style="font-size:12px; color:#666;">--</span>
+                    </div>
+                </div>
+                <button class="btn-secondary" style="margin-top:8px; width:100%;" onclick="App.refreshSensorData()">🔄
+                    Refresh Now</button>
+            </div>
+
             <div class="settings-group" style="margin-top:24px;">
                 <label class="settings-label">Device Info</label>
                 <div class="info-box">
