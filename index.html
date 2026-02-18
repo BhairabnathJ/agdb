@@ -5,7 +5,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AgriScan - Tiered View</title>
-    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="/css/main.css">
+    <script src="/js/physics.js"></script>
+    <script src="/js/i18n.js"></script>
+    <script src="/js/app.js"></script>
+
 </head>
 
 <body>
@@ -326,25 +330,21 @@
     <script src="js/physics.js"></script>
     <script src="js/i18n.js"></script>
     <script>
-        // Check if onboarding needed (before app.js initializes)
         (function () {
             try {
                 const stored = localStorage.getItem('agriscan_user_prefs');
                 if (stored) {
                     const config = JSON.parse(stored);
-                    if (config.onboarding_complete) {
-                        return; // Onboarding done, continue loading
-                    }
+                    if (config.onboarding_complete) return;
                 }
-                // Onboarding not complete - redirect
-                window.location.href = 'onboarding.html';
+                window.location.href = '/onboarding.html';
             } catch (e) {
                 console.error('Onboarding check error:', e);
-                // On error, redirect to onboarding to be safe
-                window.location.href = 'onboarding.html';
+                window.location.href = '/onboarding.html';
             }
         })();
     </script>
+
     <script src="js/app.js"></script>
 </body>
 

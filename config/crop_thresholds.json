@@ -1,0 +1,1602 @@
+{
+    "version": "1.0",
+    "crops": {
+        "maize_grain": {
+            "display_name": "Maize (Field Corn)",
+            "category": "Cereals",
+            "total_days": 150,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 70,
+                    "Zr_cm": 100.0,
+                    "p": 0.55
+                },
+                {
+                    "name": "late",
+                    "day_start": 71,
+                    "day_end": 150,
+                    "Zr_cm": 170.0,
+                    "p": 0.55
+                }
+            ]
+        },
+        "maize_sweet": {
+            "display_name": "Sweet Corn",
+            "category": "Cereals",
+            "total_days": 100,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 80.0,
+                    "p": 0.5
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 100,
+                    "Zr_cm": 120.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "wheat_spring": {
+            "display_name": "Spring Wheat",
+            "category": "Cereals",
+            "total_days": 150,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 100.0,
+                    "p": 0.55
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 150,
+                    "Zr_cm": 150.0,
+                    "p": 0.65
+                }
+            ]
+        },
+        "wheat_winter": {
+            "display_name": "Winter Wheat",
+            "category": "Cereals",
+            "total_days": 250,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 180,
+                    "Zr_cm": 100.0,
+                    "p": 0.55
+                },
+                {
+                    "name": "late",
+                    "day_start": 181,
+                    "day_end": 250,
+                    "Zr_cm": 150.0,
+                    "p": 0.65
+                }
+            ]
+        },
+        "barley": {
+            "display_name": "Barley",
+            "category": "Cereals",
+            "total_days": 135,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 45,
+                    "Zr_cm": 100.0,
+                    "p": 0.55
+                },
+                {
+                    "name": "late",
+                    "day_start": 46,
+                    "day_end": 135,
+                    "Zr_cm": 150.0,
+                    "p": 0.65
+                }
+            ]
+        },
+        "oats": {
+            "display_name": "Oats",
+            "category": "Cereals",
+            "total_days": 135,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 45,
+                    "Zr_cm": 100.0,
+                    "p": 0.55
+                },
+                {
+                    "name": "late",
+                    "day_start": 46,
+                    "day_end": 135,
+                    "Zr_cm": 150.0,
+                    "p": 0.65
+                }
+            ]
+        },
+        "rice": {
+            "display_name": "Rice",
+            "category": "Cereals",
+            "total_days": 150,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 60,
+                    "Zr_cm": 50.0,
+                    "p": 0.2
+                },
+                {
+                    "name": "late",
+                    "day_start": 61,
+                    "day_end": 150,
+                    "Zr_cm": 100.0,
+                    "p": 0.2
+                }
+            ]
+        },
+        "millet": {
+            "display_name": "Millet",
+            "category": "Cereals",
+            "total_days": 115,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 100.0,
+                    "p": 0.55
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 115,
+                    "Zr_cm": 200.0,
+                    "p": 0.55
+                }
+            ]
+        },
+        "sorghum_grain": {
+            "display_name": "Sorghum (Grain)",
+            "category": "Cereals",
+            "total_days": 125,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 55,
+                    "Zr_cm": 100.0,
+                    "p": 0.55
+                },
+                {
+                    "name": "late",
+                    "day_start": 56,
+                    "day_end": 125,
+                    "Zr_cm": 200.0,
+                    "p": 0.55
+                }
+            ]
+        },
+        "sorghum_sweet": {
+            "display_name": "Sorghum (Sweet)",
+            "category": "Cereals",
+            "total_days": 125,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 55,
+                    "Zr_cm": 100.0,
+                    "p": 0.55
+                },
+                {
+                    "name": "late",
+                    "day_start": 56,
+                    "day_end": 125,
+                    "Zr_cm": 200.0,
+                    "p": 0.55
+                }
+            ]
+        },
+        "potato": {
+            "display_name": "Potato",
+            "category": "Roots and Tubers",
+            "total_days": 130,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 55,
+                    "Zr_cm": 40.0,
+                    "p": 0.4
+                },
+                {
+                    "name": "late",
+                    "day_start": 56,
+                    "day_end": 130,
+                    "Zr_cm": 60.0,
+                    "p": 0.45
+                }
+            ]
+        },
+        "sweet_potato": {
+            "display_name": "Sweet Potato",
+            "category": "Roots and Tubers",
+            "total_days": 150,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 100.0,
+                    "p": 0.65
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 150,
+                    "Zr_cm": 150.0,
+                    "p": 0.65
+                }
+            ]
+        },
+        "beets_table": {
+            "display_name": "Table Beets",
+            "category": "Roots and Tubers",
+            "total_days": 70,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 40,
+                    "Zr_cm": 50.0,
+                    "p": 0.5
+                },
+                {
+                    "name": "late",
+                    "day_start": 41,
+                    "day_end": 70,
+                    "Zr_cm": 100.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "cassava_yr1": {
+            "display_name": "Cassava (Year 1)",
+            "category": "Roots and Tubers",
+            "total_days": 210,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 60,
+                    "Zr_cm": 50.0,
+                    "p": 0.4
+                },
+                {
+                    "name": "late",
+                    "day_start": 61,
+                    "day_end": 210,
+                    "Zr_cm": 100.0,
+                    "p": 0.45
+                }
+            ]
+        },
+        "cassava_yr2": {
+            "display_name": "Cassava (Year 2)",
+            "category": "Roots and Tubers",
+            "total_days": 360,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 190,
+                    "Zr_cm": 70.0,
+                    "p": 0.4
+                },
+                {
+                    "name": "late",
+                    "day_start": 191,
+                    "day_end": 360,
+                    "Zr_cm": 100.0,
+                    "p": 0.45
+                }
+            ]
+        },
+        "sugarbeet": {
+            "display_name": "Sugar Beet",
+            "category": "Roots and Tubers",
+            "total_days": 160,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 60,
+                    "Zr_cm": 70.0,
+                    "p": 0.55
+                },
+                {
+                    "name": "late",
+                    "day_start": 61,
+                    "day_end": 160,
+                    "Zr_cm": 120.0,
+                    "p": 0.55
+                }
+            ]
+        },
+        "carrot": {
+            "display_name": "Carrot",
+            "category": "Small Vegetables",
+            "total_days": 110,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 50.0,
+                    "p": 0.4
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 110,
+                    "Zr_cm": 100.0,
+                    "p": 0.45
+                }
+            ]
+        },
+        "lettuce": {
+            "display_name": "Lettuce",
+            "category": "Small Vegetables",
+            "total_days": 75,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 30.0,
+                    "p": 0.3
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 75,
+                    "Zr_cm": 50.0,
+                    "p": 0.3
+                }
+            ]
+        },
+        "cabbage": {
+            "display_name": "Cabbage",
+            "category": "Small Vegetables",
+            "total_days": 165,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 100,
+                    "Zr_cm": 50.0,
+                    "p": 0.45
+                },
+                {
+                    "name": "late",
+                    "day_start": 101,
+                    "day_end": 165,
+                    "Zr_cm": 80.0,
+                    "p": 0.45
+                }
+            ]
+        },
+        "broccoli": {
+            "display_name": "Broccoli",
+            "category": "Small Vegetables",
+            "total_days": 135,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 80,
+                    "Zr_cm": 40.0,
+                    "p": 0.45
+                },
+                {
+                    "name": "late",
+                    "day_start": 81,
+                    "day_end": 135,
+                    "Zr_cm": 60.0,
+                    "p": 0.45
+                }
+            ]
+        },
+        "cauliflower": {
+            "display_name": "Cauliflower",
+            "category": "Small Vegetables",
+            "total_days": 140,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 85,
+                    "Zr_cm": 40.0,
+                    "p": 0.45
+                },
+                {
+                    "name": "late",
+                    "day_start": 86,
+                    "day_end": 140,
+                    "Zr_cm": 70.0,
+                    "p": 0.45
+                }
+            ]
+        },
+        "celery": {
+            "display_name": "Celery",
+            "category": "Small Vegetables",
+            "total_days": 180,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 65,
+                    "Zr_cm": 30.0,
+                    "p": 0.2
+                },
+                {
+                    "name": "late",
+                    "day_start": 66,
+                    "day_end": 180,
+                    "Zr_cm": 50.0,
+                    "p": 0.2
+                }
+            ]
+        },
+        "garlic": {
+            "display_name": "Garlic",
+            "category": "Small Vegetables",
+            "total_days": 175,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 55,
+                    "Zr_cm": 30.0,
+                    "p": 0.3
+                },
+                {
+                    "name": "late",
+                    "day_start": 56,
+                    "day_end": 175,
+                    "Zr_cm": 50.0,
+                    "p": 0.3
+                }
+            ]
+        },
+        "onion_dry": {
+            "display_name": "Onion (Dry)",
+            "category": "Small Vegetables",
+            "total_days": 150,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 40,
+                    "Zr_cm": 30.0,
+                    "p": 0.35
+                },
+                {
+                    "name": "late",
+                    "day_start": 41,
+                    "day_end": 150,
+                    "Zr_cm": 60.0,
+                    "p": 0.4
+                }
+            ]
+        },
+        "onion_green": {
+            "display_name": "Onion (Green)",
+            "category": "Small Vegetables",
+            "total_days": 110,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 55,
+                    "Zr_cm": 30.0,
+                    "p": 0.3
+                },
+                {
+                    "name": "late",
+                    "day_start": 56,
+                    "day_end": 110,
+                    "Zr_cm": 60.0,
+                    "p": 0.3
+                }
+            ]
+        },
+        "onion_seed": {
+            "display_name": "Onion (Seed)",
+            "category": "Small Vegetables",
+            "total_days": 275,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 65,
+                    "Zr_cm": 30.0,
+                    "p": 0.35
+                },
+                {
+                    "name": "late",
+                    "day_start": 66,
+                    "day_end": 275,
+                    "Zr_cm": 60.0,
+                    "p": 0.4
+                }
+            ]
+        },
+        "spinach": {
+            "display_name": "Spinach",
+            "category": "Small Vegetables",
+            "total_days": 70,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 40,
+                    "Zr_cm": 30.0,
+                    "p": 0.2
+                },
+                {
+                    "name": "late",
+                    "day_start": 41,
+                    "day_end": 70,
+                    "Zr_cm": 50.0,
+                    "p": 0.2
+                }
+            ]
+        },
+        "radish": {
+            "display_name": "Radish",
+            "category": "Small Vegetables",
+            "total_days": 35,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 15,
+                    "Zr_cm": 30.0,
+                    "p": 0.3
+                },
+                {
+                    "name": "late",
+                    "day_start": 16,
+                    "day_end": 35,
+                    "Zr_cm": 50.0,
+                    "p": 0.3
+                }
+            ]
+        },
+        "tomato": {
+            "display_name": "Tomato",
+            "category": "Vegetables Solanum",
+            "total_days": 145,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 70,
+                    "Zr_cm": 70.0,
+                    "p": 0.4
+                },
+                {
+                    "name": "late",
+                    "day_start": 71,
+                    "day_end": 145,
+                    "Zr_cm": 150.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "eggplant": {
+            "display_name": "Eggplant",
+            "category": "Vegetables Solanum",
+            "total_days": 130,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 70,
+                    "Zr_cm": 70.0,
+                    "p": 0.45
+                },
+                {
+                    "name": "late",
+                    "day_start": 71,
+                    "day_end": 130,
+                    "Zr_cm": 120.0,
+                    "p": 0.45
+                }
+            ]
+        },
+        "pepper_sweet": {
+            "display_name": "Sweet Pepper (Bell)",
+            "category": "Vegetables Solanum",
+            "total_days": 120,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 60,
+                    "Zr_cm": 50.0,
+                    "p": 0.3
+                },
+                {
+                    "name": "late",
+                    "day_start": 61,
+                    "day_end": 120,
+                    "Zr_cm": 100.0,
+                    "p": 0.4
+                }
+            ]
+        },
+        "cucumber_fresh": {
+            "display_name": "Cucumber (Fresh)",
+            "category": "Vegetables Cucumber",
+            "total_days": 105,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 70.0,
+                    "p": 0.5
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 105,
+                    "Zr_cm": 120.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "cucumber_machine": {
+            "display_name": "Cucumber (Machine)",
+            "category": "Vegetables Cucumber",
+            "total_days": 105,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 70.0,
+                    "p": 0.5
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 105,
+                    "Zr_cm": 120.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "cantaloupe": {
+            "display_name": "Cantaloupe",
+            "category": "Vegetables Cucumber",
+            "total_days": 120,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 75,
+                    "Zr_cm": 90.0,
+                    "p": 0.45
+                },
+                {
+                    "name": "late",
+                    "day_start": 76,
+                    "day_end": 120,
+                    "Zr_cm": 150.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "watermelon": {
+            "display_name": "Watermelon",
+            "category": "Vegetables Cucumber",
+            "total_days": 110,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 80.0,
+                    "p": 0.45
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 110,
+                    "Zr_cm": 150.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "pumpkin": {
+            "display_name": "Pumpkin/Winter Squash",
+            "category": "Vegetables Cucumber",
+            "total_days": 100,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 100.0,
+                    "p": 0.4
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 100,
+                    "Zr_cm": 150.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "squash_zucchini": {
+            "display_name": "Squash/Zucchini",
+            "category": "Vegetables Cucumber",
+            "total_days": 100,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 60,
+                    "Zr_cm": 60.0,
+                    "p": 0.5
+                },
+                {
+                    "name": "late",
+                    "day_start": 61,
+                    "day_end": 100,
+                    "Zr_cm": 120.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "melon_sweet": {
+            "display_name": "Sweet Melon",
+            "category": "Vegetables Cucumber",
+            "total_days": 120,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 60,
+                    "Zr_cm": 90.0,
+                    "p": 0.45
+                },
+                {
+                    "name": "late",
+                    "day_start": 61,
+                    "day_end": 120,
+                    "Zr_cm": 150.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "beans_green": {
+            "display_name": "Green Beans",
+            "category": "Legumes",
+            "total_days": 90,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 50.0,
+                    "p": 0.45
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 90,
+                    "Zr_cm": 70.0,
+                    "p": 0.45
+                }
+            ]
+        },
+        "beans_dry": {
+            "display_name": "Dry Beans",
+            "category": "Legumes",
+            "total_days": 110,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 50.0,
+                    "p": 0.45
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 110,
+                    "Zr_cm": 70.0,
+                    "p": 0.45
+                }
+            ]
+        },
+        "chickpea": {
+            "display_name": "Chickpea",
+            "category": "Legumes",
+            "total_days": 150,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 60.0,
+                    "p": 0.5
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 150,
+                    "Zr_cm": 110.00000000000001,
+                    "p": 0.5
+                }
+            ]
+        },
+        "fababean_fresh": {
+            "display_name": "Faba Bean (Fresh)",
+            "category": "Legumes",
+            "total_days": 90,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 40,
+                    "Zr_cm": 50.0,
+                    "p": 0.45
+                },
+                {
+                    "name": "late",
+                    "day_start": 41,
+                    "day_end": 90,
+                    "Zr_cm": 90.0,
+                    "p": 0.45
+                }
+            ]
+        },
+        "fababean_dry": {
+            "display_name": "Faba Bean (Dry)",
+            "category": "Legumes",
+            "total_days": 135,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 50.0,
+                    "p": 0.45
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 135,
+                    "Zr_cm": 90.0,
+                    "p": 0.45
+                }
+            ]
+        },
+        "cowpea": {
+            "display_name": "Cowpea/Green Gram",
+            "category": "Legumes",
+            "total_days": 100,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 60.0,
+                    "p": 0.45
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 100,
+                    "Zr_cm": 130.0,
+                    "p": 0.45
+                }
+            ]
+        },
+        "groundnut": {
+            "display_name": "Groundnut (Peanut)",
+            "category": "Legumes",
+            "total_days": 120,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 60,
+                    "Zr_cm": 50.0,
+                    "p": 0.55
+                },
+                {
+                    "name": "late",
+                    "day_start": 61,
+                    "day_end": 120,
+                    "Zr_cm": 100.0,
+                    "p": 0.6
+                }
+            ]
+        },
+        "lentil": {
+            "display_name": "Lentil",
+            "category": "Legumes",
+            "total_days": 150,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 60.0,
+                    "p": 0.5
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 150,
+                    "Zr_cm": 110.00000000000001,
+                    "p": 0.5
+                }
+            ]
+        },
+        "pea_fresh": {
+            "display_name": "Pea (Fresh)",
+            "category": "Legumes",
+            "total_days": 90,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 40,
+                    "Zr_cm": 60.0,
+                    "p": 0.4
+                },
+                {
+                    "name": "late",
+                    "day_start": 41,
+                    "day_end": 90,
+                    "Zr_cm": 100.0,
+                    "p": 0.45
+                }
+            ]
+        },
+        "pea_dry": {
+            "display_name": "Pea (Dry)",
+            "category": "Legumes",
+            "total_days": 100,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 60.0,
+                    "p": 0.4
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 100,
+                    "Zr_cm": 100.0,
+                    "p": 0.45
+                }
+            ]
+        },
+        "soybean": {
+            "display_name": "Soybean",
+            "category": "Legumes",
+            "total_days": 140,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 60.0,
+                    "p": 0.5
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 140,
+                    "Zr_cm": 130.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "cotton": {
+            "display_name": "Cotton",
+            "category": "Fibre Crops",
+            "total_days": 195,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 80,
+                    "Zr_cm": 100.0,
+                    "p": 0.65
+                },
+                {
+                    "name": "late",
+                    "day_start": 81,
+                    "day_end": 195,
+                    "Zr_cm": 170.0,
+                    "p": 0.7
+                }
+            ]
+        },
+        "flax": {
+            "display_name": "Flax",
+            "category": "Fibre Crops",
+            "total_days": 150,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 60,
+                    "Zr_cm": 100.0,
+                    "p": 0.5
+                },
+                {
+                    "name": "late",
+                    "day_start": 61,
+                    "day_end": 150,
+                    "Zr_cm": 120.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "castor": {
+            "display_name": "Castor Bean",
+            "category": "Oil Crops",
+            "total_days": 180,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 65,
+                    "Zr_cm": 100.0,
+                    "p": 0.5
+                },
+                {
+                    "name": "late",
+                    "day_start": 66,
+                    "day_end": 180,
+                    "Zr_cm": 150.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "rapeseed": {
+            "display_name": "Rapeseed/Canola",
+            "category": "Oil Crops",
+            "total_days": 120,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 100.0,
+                    "p": 0.6
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 120,
+                    "Zr_cm": 150.0,
+                    "p": 0.6
+                }
+            ]
+        },
+        "safflower": {
+            "display_name": "Safflower",
+            "category": "Oil Crops",
+            "total_days": 125,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 55,
+                    "Zr_cm": 100.0,
+                    "p": 0.6
+                },
+                {
+                    "name": "late",
+                    "day_start": 56,
+                    "day_end": 125,
+                    "Zr_cm": 200.0,
+                    "p": 0.6
+                }
+            ]
+        },
+        "sesame": {
+            "display_name": "Sesame",
+            "category": "Oil Crops",
+            "total_days": 110,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 50,
+                    "Zr_cm": 100.0,
+                    "p": 0.6
+                },
+                {
+                    "name": "late",
+                    "day_start": 51,
+                    "day_end": 110,
+                    "Zr_cm": 150.0,
+                    "p": 0.6
+                }
+            ]
+        },
+        "sunflower": {
+            "display_name": "Sunflower",
+            "category": "Oil Crops",
+            "total_days": 130,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 60,
+                    "Zr_cm": 80.0,
+                    "p": 0.45
+                },
+                {
+                    "name": "late",
+                    "day_start": 61,
+                    "day_end": 130,
+                    "Zr_cm": 150.0,
+                    "p": 0.45
+                }
+            ]
+        },
+        "alfalfa_hay": {
+            "display_name": "Alfalfa Hay (Avg)",
+            "category": "Forages",
+            "total_days": 60,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 30,
+                    "Zr_cm": 100.0,
+                    "p": 0.55
+                },
+                {
+                    "name": "late",
+                    "day_start": 31,
+                    "day_end": 60,
+                    "Zr_cm": 200.0,
+                    "p": 0.6
+                }
+            ]
+        },
+        "alfalfa_cutting": {
+            "display_name": "Alfalfa (Individual Cut)",
+            "category": "Forages",
+            "total_days": 30,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 15,
+                    "Zr_cm": 100.0,
+                    "p": 0.55
+                },
+                {
+                    "name": "late",
+                    "day_start": 16,
+                    "day_end": 30,
+                    "Zr_cm": 200.0,
+                    "p": 0.6
+                }
+            ]
+        },
+        "bermuda_hay": {
+            "display_name": "Bermuda Hay (Avg)",
+            "category": "Forages",
+            "total_days": 135,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 25,
+                    "Zr_cm": 100.0,
+                    "p": 0.55
+                },
+                {
+                    "name": "late",
+                    "day_start": 26,
+                    "day_end": 135,
+                    "Zr_cm": 150.0,
+                    "p": 0.55
+                }
+            ]
+        },
+        "clover_hay": {
+            "display_name": "Clover Hay (Avg)",
+            "category": "Forages",
+            "total_days": 100,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 30,
+                    "Zr_cm": 60.0,
+                    "p": 0.5
+                },
+                {
+                    "name": "late",
+                    "day_start": 31,
+                    "day_end": 100,
+                    "Zr_cm": 120.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "pasture_rotated": {
+            "display_name": "Pasture (Rotated)",
+            "category": "Forages",
+            "total_days": 100,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 30,
+                    "Zr_cm": 50.0,
+                    "p": 0.6
+                },
+                {
+                    "name": "late",
+                    "day_start": 31,
+                    "day_end": 100,
+                    "Zr_cm": 150.0,
+                    "p": 0.6
+                }
+            ]
+        },
+        "pasture_extensive": {
+            "display_name": "Pasture (Extensive)",
+            "category": "Forages",
+            "total_days": 100,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 30,
+                    "Zr_cm": 50.0,
+                    "p": 0.6
+                },
+                {
+                    "name": "late",
+                    "day_start": 31,
+                    "day_end": 100,
+                    "Zr_cm": 150.0,
+                    "p": 0.6
+                }
+            ]
+        },
+        "turf_cool": {
+            "display_name": "Turf Grass (Cool)",
+            "category": "Forages",
+            "total_days": 365,
+            "stages": [
+                {
+                    "name": "active",
+                    "day_start": 0,
+                    "day_end": 365,
+                    "Zr_cm": 75.0,
+                    "p": 0.4
+                }
+            ]
+        },
+        "turf_warm": {
+            "display_name": "Turf Grass (Warm)",
+            "category": "Forages",
+            "total_days": 365,
+            "stages": [
+                {
+                    "name": "active",
+                    "day_start": 0,
+                    "day_end": 365,
+                    "Zr_cm": 75.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "sugarcane": {
+            "display_name": "Sugarcane",
+            "category": "Sugar Crops",
+            "total_days": 405,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 95,
+                    "Zr_cm": 120.0,
+                    "p": 0.65
+                },
+                {
+                    "name": "late",
+                    "day_start": 96,
+                    "day_end": 405,
+                    "Zr_cm": 200.0,
+                    "p": 0.7
+                }
+            ]
+        },
+        "banana_yr1": {
+            "display_name": "Banana (Year 1)",
+            "category": "Tropical Fruits",
+            "total_days": 390,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 210,
+                    "Zr_cm": 50.0,
+                    "p": 0.35
+                },
+                {
+                    "name": "late",
+                    "day_start": 211,
+                    "day_end": 390,
+                    "Zr_cm": 90.0,
+                    "p": 0.35
+                }
+            ]
+        },
+        "banana_yr2": {
+            "display_name": "Banana (Year 2)",
+            "category": "Tropical Fruits",
+            "total_days": 365,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 180,
+                    "Zr_cm": 50.0,
+                    "p": 0.35
+                },
+                {
+                    "name": "late",
+                    "day_start": 181,
+                    "day_end": 365,
+                    "Zr_cm": 90.0,
+                    "p": 0.35
+                }
+            ]
+        },
+        "pineapple": {
+            "display_name": "Pineapple",
+            "category": "Tropical Fruits",
+            "total_days": 790,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 180,
+                    "Zr_cm": 30.0,
+                    "p": 0.5
+                },
+                {
+                    "name": "late",
+                    "day_start": 181,
+                    "day_end": 790,
+                    "Zr_cm": 60.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "coffee": {
+            "display_name": "Coffee",
+            "category": "Tropical Fruits",
+            "total_days": 365,
+            "stages": [
+                {
+                    "name": "active",
+                    "day_start": 0,
+                    "day_end": 365,
+                    "Zr_cm": 120.0,
+                    "p": 0.4
+                }
+            ]
+        },
+        "citrus_70": {
+            "display_name": "Citrus (70% canopy)",
+            "category": "Fruit Trees",
+            "total_days": 365,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 150,
+                    "Zr_cm": 120.0,
+                    "p": 0.5
+                },
+                {
+                    "name": "late",
+                    "day_start": 151,
+                    "day_end": 365,
+                    "Zr_cm": 150.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "citrus_50": {
+            "display_name": "Citrus (50% canopy)",
+            "category": "Fruit Trees",
+            "total_days": 365,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 150,
+                    "Zr_cm": 80.0,
+                    "p": 0.5
+                },
+                {
+                    "name": "late",
+                    "day_start": 151,
+                    "day_end": 365,
+                    "Zr_cm": 130.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "apple_nogc": {
+            "display_name": "Apple (No Ground Cover)",
+            "category": "Fruit Trees",
+            "total_days": 210,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 90,
+                    "Zr_cm": 100.0,
+                    "p": 0.5
+                },
+                {
+                    "name": "late",
+                    "day_start": 91,
+                    "day_end": 210,
+                    "Zr_cm": 200.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "apple_gc": {
+            "display_name": "Apple (Active Ground)",
+            "category": "Fruit Trees",
+            "total_days": 210,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 90,
+                    "Zr_cm": 100.0,
+                    "p": 0.5
+                },
+                {
+                    "name": "late",
+                    "day_start": 91,
+                    "day_end": 210,
+                    "Zr_cm": 200.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "peach_nogc": {
+            "display_name": "Peach (No Ground Cover)",
+            "category": "Fruit Trees",
+            "total_days": 210,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 90,
+                    "Zr_cm": 100.0,
+                    "p": 0.5
+                },
+                {
+                    "name": "late",
+                    "day_start": 91,
+                    "day_end": 210,
+                    "Zr_cm": 200.0,
+                    "p": 0.5
+                }
+            ]
+        },
+        "olive": {
+            "display_name": "Olive",
+            "category": "Fruit Trees",
+            "total_days": 270,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 120,
+                    "Zr_cm": 120.0,
+                    "p": 0.65
+                },
+                {
+                    "name": "late",
+                    "day_start": 121,
+                    "day_end": 270,
+                    "Zr_cm": 170.0,
+                    "p": 0.65
+                }
+            ]
+        },
+        "walnut": {
+            "display_name": "Walnut",
+            "category": "Fruit Trees",
+            "total_days": 190,
+            "stages": [
+                {
+                    "name": "early",
+                    "day_start": 0,
+                    "day_end": 30,
+                    "Zr_cm": 170.0,
+                    "p": 0.5
+                },
+                {
+                    "name": "late",
+                    "day_start": 31,
+                    "day_end": 190,
+                    "Zr_cm": 240.0,
+                    "p": 0.5
+                }
+            ]
+        }
+    },
+    "soils": {
+        "sandy_loam": {
+            "label": "Sandy / Light",
+            "theta_fc": 0.2,
+            "theta_wp": 0.08
+        },
+        "loam": {
+            "label": "Normal / Mixed",
+            "theta_fc": 0.31,
+            "theta_wp": 0.14
+        },
+        "clay_loam": {
+            "label": "Heavy / Clay",
+            "theta_fc": 0.36,
+            "theta_wp": 0.2
+        },
+        "clay": {
+            "label": "Very Heavy",
+            "theta_fc": 0.42,
+            "theta_wp": 0.24
+        }
+    }
+}
