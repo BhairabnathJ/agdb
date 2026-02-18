@@ -873,6 +873,7 @@ const App = {
     state: {
         currentTier: 1,
         currentView: 'home',
+        chartMetric: 'theta_pct',
         currentSample: null,
         selectedZone: null,  // No zone selected by default
         problemFirst: false,
@@ -954,6 +955,7 @@ const App = {
         };
         const sectionId = routeToSection[view] || 'tier-1';
         this.state.currentView = view;
+        if (navigator.vibrate) navigator.vibrate(8);
         this.showSection(sectionId);
         this.syncBottomNav(view);
     },
@@ -1180,6 +1182,53 @@ const App = {
         }
     },
 
+    evaluateMoistureStatus: function (sample) {
+        const thetaPct = (sample.theta || 0) * 100;
+        const targetLow = Math.max(0, ((sample.theta_refill || (sample.theta_fc || 0.3) * 0.72) * 100) + 2);
+        const targetHigh = Math.max(targetLow + 5, (sample.theta_fc || 0.35) * 100);
+        const hoursToWatch = sample.dryingRate_per_hr && sample.dryingRate_per_hr < -0.0003
+            ? Math.max(1, Math.round(((thetaPct - targetLow) / Math.abs(sample.dryingRate_per_hr * 100)) || 0))
+            : 24;
+
+        if (thetaPct < targetLow - 2) {
+            return {
+                level: 'critical',
+                emoji: '🔴',
+                status: 'CRITICAL',
+                action: 'Water within 12 hours',
+                decision: 'Yes, water soon',
+                decisionDetail: 'Moisture is below safe target. Prioritize irrigation now.',
+                targetLow,
+                targetHigh,
+                hoursToAction: 12
+            };
+        }
+        if (thetaPct < targetLow + 2) {
+            return {
+                level: 'warning',
+                emoji: '🟡',
+                status: 'WATCH',
+                action: `Check again in ${Math.min(24, Math.max(4, hoursToWatch))} hours`,
+                decision: 'Not now, prepare soon',
+                decisionDetail: `Moisture is near the lower target. Plan watering within ${Math.min(36, Math.max(12, hoursToWatch))} hours.`,
+                targetLow,
+                targetHigh,
+                hoursToAction: Math.min(36, Math.max(12, hoursToWatch))
+            };
+        }
+        return {
+            level: 'healthy',
+            emoji: '🟢',
+            status: 'HEALTHY',
+            action: 'No watering needed today',
+            decision: 'No, not today',
+            decisionDetail: 'Moisture is in a healthy range. Continue monitoring.',
+            targetLow,
+            targetHigh,
+            hoursToAction: 36
+        };
+    },
+
     // --- RENDERING ---
     render: function () {
         if (!this.state.currentSample) return;
@@ -1202,6 +1251,8 @@ const App = {
         const statusIcon = document.getElementById('t1-status-icon');
         const msgEl = document.getElementById('t1-message');
         const instrEl = document.getElementById('t1-instruction');
+        const weatherEl = document.getElementById('t1-weather');
+        const zoneSummaryEl = document.getElementById('t1-zone-summary');
         const timeEl = document.getElementById('t1-time');
         const moistureEl = document.getElementById('t1-glance-moisture');
         const tempEl = document.getElementById('t1-glance-temp');
@@ -1215,15 +1266,18 @@ const App = {
         if (hour < 12) greeting = 'Good morning';
         else if (hour < 17) greeting = 'Good afternoon';
         if (greetingEl) greetingEl.textContent = `${greeting} 👋`;
+        if (weatherEl) weatherEl.textContent = s.temp_c > 30 ? '☀️ Hot and dry today' : (s.temp_c < 18 ? '⛅ Cool conditions' : '🌤 Mild field conditions');
 
-        if (s.urgency === 'high') {
+        const moistureState = this.evaluateMoistureStatus(s);
+
+        if (moistureState.level === 'critical') {
             statusIcon.classList.add('critical');
             msgEl.textContent = 'Your field needs watering attention today.';
-            instrEl.textContent = 'Moisture is below target in at least one zone. Plan irrigation now.';
-        } else if (s.urgency === 'medium') {
+            instrEl.textContent = `Critical moisture detected. ${moistureState.action}.`;
+        } else if (moistureState.level === 'warning') {
             statusIcon.classList.add('warning');
             msgEl.textContent = 'Your field is stable, but a few areas are drying.';
-            instrEl.textContent = 'No emergency yet. Check again later today.';
+            instrEl.textContent = `${moistureState.action}.`;
         } else {
             statusIcon.classList.add('healthy');
             msgEl.textContent = 'Your field is looking healthy today.';
@@ -1231,11 +1285,15 @@ const App = {
         }
 
         if (timeEl) {
-            timeEl.textContent = new Date(s.timestamp * 1000).toLocaleTimeString();
+            const minsAgo = Math.max(0, Math.round((Date.now() - s.timestamp * 1000) / 60000));
+            timeEl.textContent = minsAgo <= 1 ? 'Updated just now' : `Updated ${minsAgo} min ago`;
         }
-        if (moistureEl) moistureEl.textContent = s.status || 'Optimal';
+        if (moistureEl) moistureEl.textContent = `${moistureState.emoji} ${moistureState.status}`;
         if (tempEl) tempEl.textContent = `${s.temp_c.toFixed(1)}°C`;
+        const allZones = Object.values(MockAPI.getAllZones ? MockAPI.getAllZones() : {});
+        const healthyZones = allZones.filter((z) => z.latest && z.latest.urgency === 'low').length;
         if (zonesEl) zonesEl.textContent = `${Object.keys(MockAPI.zones || {}).length} sensors`;
+        if (zoneSummaryEl) zoneSummaryEl.textContent = `${healthyZones} of ${allZones.length} zones healthy`;
     },
 
     renderTier2: function () {
@@ -1289,34 +1347,40 @@ const App = {
 
     renderTier3: function () {
         const s = this.state.currentSample;
+        const moistureState = this.evaluateMoistureStatus(s);
+        const thetaPct = (s.theta * 100);
+        const targetText = `${moistureState.targetLow.toFixed(0)}-${moistureState.targetHigh.toFixed(0)}%`;
 
         this.setSafeText('t3-moist', (s.theta * 100).toFixed(1) + '%');
         this.setSafeText('t3-soil-temp', s.temp_c.toFixed(1) + '°C');
-        this.setSafeText('t3-vpd', s.psi_kPa ? `${s.psi_kPa.toFixed(1)} kPa (easy plant access)` : '--');
-        this.setSafeText('t3-confidence', `${Math.round((s.confidence || 0) * 100)}%`);
+        this.setSafeText('t3-vpd', s.psi_kPa && s.psi_kPa < 40 ? 'Easy' : (s.psi_kPa && s.psi_kPa < 80 ? 'Moderate' : 'Hard'));
+        this.setSafeText('t3-confidence', `${Math.round((s.confidence || 0) * 100)}% reliable`);
         this.setSafeText('t3-leaf', s.AW_mm ? `${s.AW_mm.toFixed(1)} mm available` : '--');
         this.setSafeText('t3-depletion', s.fractionDepleted ? `${(s.fractionDepleted * 100).toFixed(0)}% used` : '--');
+        this.setSafeText('t3-moist-context', `Target: ${targetText} · Status: ${moistureState.status}`);
+        this.setSafeText('t3-temp-context', s.temp_c > 32 ? 'Crop comfort: heat stress risk' : (s.temp_c < 12 ? 'Crop comfort: cool stress risk' : 'Crop comfort: good'));
+        this.setSafeText('t3-confidence-context', (s.confidence || 0) >= 0.75 ? 'Good accuracy · no issues' : 'Moderate accuracy · still learning');
+        this.setSafeText('t3-access-context', `Roots can reach water: ${s.psi_kPa && s.psi_kPa < 80 ? 'Yes' : 'Limited'}`);
+        this.setSafeText('t3-aw-context', `Target reserve: ${Math.max(20, moistureState.targetLow).toFixed(0)}+ mm`);
+        this.setSafeText('t3-depletion-context', `Since last refill: ${s.fractionDepleted ? (s.fractionDepleted * 100).toFixed(0) : '--'}%`);
 
         const mCell = document.getElementById('t3-moist-cell');
         if (mCell) {
             mCell.className = 'metric-cell';
-            if (s.urgency === 'high') mCell.classList.add('critical');
-            else if (s.urgency === 'medium') mCell.classList.add('warning');
+            if (moistureState.level === 'critical') mCell.classList.add('critical');
+            else if (moistureState.level === 'warning') mCell.classList.add('warning');
             else mCell.classList.add('healthy');
         }
 
-        const shouldWater = s.urgency === 'high' ? 'Yes' : 'No';
-        this.setSafeText('decision-need', `Should I water today? ${shouldWater}`);
-        this.setSafeText('decision-next', s.urgency === 'high'
-            ? 'Next watering window: now'
-            : 'Next watering window: likely in 1-2 days');
+        this.setSafeText('decision-need', `Should I water today? ${moistureState.decision}`);
+        this.setSafeText('decision-next', `${moistureState.decisionDetail} Next watering: within ${moistureState.hoursToAction}h.`);
 
         const zones = MockAPI.getAllZones();
         let needsAttention = 0;
         Object.values(zones).forEach((z) => {
             if (z.latest && (z.latest.urgency === 'high' || z.latest.urgency === 'medium')) needsAttention++;
         });
-        this.setSafeText('health-status', `Overall status: ${s.urgency === 'high' ? 'Action needed' : (s.urgency === 'medium' ? 'Watch' : 'Healthy')}`);
+        this.setSafeText('health-status', `Overall status: ${moistureState.status}`);
         this.setSafeText('health-zone', `Zones needing attention: ${needsAttention}`);
 
         this.renderChart();
@@ -1330,65 +1394,127 @@ const App = {
         if (history.length < 2) return;
 
         const W = container.clientWidth || 300;
-        const H = container.clientHeight || 200;
-        const pad = 25;
+        const H = container.clientHeight || 260;
+        const pad = 28;
+
+        const metricDefs = {
+            theta_pct: {
+                title: 'Soil Moisture Trend',
+                unit: '%',
+                value: (h) => (h.theta ?? 0) * 100,
+                domain: () => ({ min: 0, max: 50 }),
+                status: (v) => (v < 15 ? 'critical' : (v < 20 ? 'warning' : 'healthy')),
+                bands: [{ from: 20, to: 50, color: 'rgba(95,141,78,0.10)' }, { from: 15, to: 20, color: 'rgba(244,162,97,0.12)' }, { from: 0, to: 15, color: 'rgba(231,111,81,0.12)' }]
+            },
+            aw_mm: {
+                title: 'Available Water Trend',
+                unit: 'mm',
+                value: (h) => h.AW_mm ?? 0,
+                domain: (vals) => ({ min: 0, max: Math.max(80, Math.ceil(Math.max(...vals) / 10) * 10) }),
+                status: (v) => (v < 20 ? 'critical' : (v < 40 ? 'warning' : 'healthy')),
+                bands: [{ from: 40, to: null, color: 'rgba(122,166,122,0.10)' }, { from: 20, to: 40, color: 'rgba(216,167,89,0.12)' }, { from: 0, to: 20, color: 'rgba(208,96,96,0.10)' }]
+            },
+            depletion_pct: {
+                title: 'Water Used Trend',
+                unit: '%',
+                value: (h) => (h.fractionDepleted ?? 0) * 100,
+                domain: () => ({ min: 0, max: 100 }),
+                status: (v) => (v > 70 ? 'critical' : (v > 40 ? 'warning' : 'healthy')),
+                bands: [{ from: 0, to: 40, color: 'rgba(122,166,122,0.10)' }, { from: 40, to: 70, color: 'rgba(216,167,89,0.12)' }, { from: 70, to: 100, color: 'rgba(208,96,96,0.10)' }]
+            },
+            temp_c: {
+                title: 'Soil Temperature Trend',
+                unit: '°C',
+                value: (h) => h.temp_c ?? 0,
+                domain: (vals) => ({ min: Math.floor(Math.min(...vals, 0) / 5) * 5, max: Math.ceil(Math.max(...vals, 35) / 5) * 5 }),
+                status: (v) => (v < 10 || v > 34 ? 'critical' : (v < 15 || v > 30 ? 'warning' : 'healthy')),
+                bands: [{ from: 15, to: 30, color: 'rgba(95,141,78,0.10)' }, { from: 10, to: 15, color: 'rgba(244,162,97,0.12)' }, { from: 30, to: 34, color: 'rgba(244,162,97,0.12)' }, { from: 34, to: null, color: 'rgba(231,111,81,0.12)' }]
+            }
+        };
+
+        const metricKey = this.state.chartMetric || 'theta_pct';
+        const metric = metricDefs[metricKey] || metricDefs.theta_pct;
+        const values = history.map(metric.value).filter((v) => Number.isFinite(v));
+        if (values.length < 2) return;
+        const range = metric.domain(values);
+
+        const chartTitle = document.getElementById('chart-title');
+        if (chartTitle) chartTitle.textContent = metric.title;
 
         const tMin = history[0].timestamp;
         const tMax = history[history.length - 1].timestamp;
-        const vMin = 0, vMax = 0.5;
+        const getX = (t) => pad + ((t - tMin) / (tMax - tMin + 1)) * (W - 2 * pad);
+        const getY = (v) => H - pad - ((v - range.min) / (range.max - range.min || 1)) * (H - 2 * pad);
 
-        const getX = t => pad + ((t - tMin) / (tMax - tMin + 1)) * (W - 2 * pad);
-        const getY = v => H - pad - ((v - vMin) / (vMax - vMin)) * (H - 2 * pad);
-
-        let d = `M ${getX(history[0].timestamp)} ${getY(history[0].theta)}`;
-        let area = `M ${getX(history[0].timestamp)} ${H - pad} L ${getX(history[0].timestamp)} ${getY(history[0].theta)}`;
+        const points = history.map((h) => ({ timestamp: h.timestamp, value: metric.value(h) }));
+        let area = `M ${getX(points[0].timestamp)} ${H - pad} L ${getX(points[0].timestamp)} ${getY(points[0].value)}`;
+        let segments = '';
         let markers = '';
-        let lastDelta = history[history.length - 1].theta - history[history.length - 2].theta;
+        let legendBands = '';
+
+        metric.bands.forEach((band) => {
+            const yTop = getY(band.to === null ? range.max : band.to);
+            const yBottom = getY(band.from);
+            legendBands += `<rect x="${pad}" y="${yTop}" width="${W - 2 * pad}" height="${Math.max(0, yBottom - yTop)}" fill="${band.color}" />`;
+        });
+
+        const latest = points[points.length - 1];
+        const prev = points[points.length - 2];
+        const lastDelta = latest.value - prev.value;
         const trendEl = document.getElementById('chart-trend');
         if (trendEl) {
             let trendLabel = 'Trend: → Stable';
-            if (lastDelta > 0.002) trendLabel = 'Trend: ↗ Increasing';
-            if (lastDelta < -0.002) trendLabel = 'Trend: ↘ Decreasing';
-            trendEl.textContent = trendLabel;
+            const stepThreshold = metric.unit === '%' ? 1 : 2;
+            if (lastDelta > stepThreshold * 0.3) trendLabel = 'Trend: ↗ Increasing';
+            if (lastDelta < -stepThreshold * 0.3) trendLabel = 'Trend: ↘ Decreasing';
+            const latestStatus = metric.status(latest.value);
+            const statusText = latestStatus === 'critical' ? 'CRITICAL - needs action' : (latestStatus === 'warning' ? 'WATCH - check soon' : 'HEALTHY');
+            const yesterdayIdx = Math.max(0, points.length - 96);
+            const vsYesterday = latest.value - points[yesterdayIdx].value;
+            const projected = latest.value + (lastDelta * 8);
+            const projectionText = Number.isFinite(projected) ? ` · Projected +2h: ${projected.toFixed(1)}${metric.unit}` : '';
+            trendEl.textContent = `${trendLabel} · Currently: ${latest.value.toFixed(1)}${metric.unit} (${statusText}) · vs yesterday: ${vsYesterday >= 0 ? '+' : ''}${vsYesterday.toFixed(1)}${metric.unit}${projectionText}`;
         }
 
-        for (let i = 1; i < history.length; i++) {
-            d += ` L ${getX(history[i].timestamp)} ${getY(history[i].theta)}`;
-            area += ` L ${getX(history[i].timestamp)} ${getY(history[i].theta)}`;
-            if ((history[i].theta - history[i - 1].theta) > 0.02) {
-                const x = getX(history[i].timestamp);
+        for (let i = 1; i < points.length; i++) {
+            const p0 = points[i - 1];
+            const p1 = points[i];
+            const x0 = getX(p0.timestamp);
+            const y0 = getY(p0.value);
+            const x1 = getX(p1.timestamp);
+            const y1 = getY(p1.value);
+            const status = metric.status(p1.value);
+            const stroke = status === 'critical' ? '#E76F51' : (status === 'warning' ? '#F4A261' : '#5F8D4E');
+            segments += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="${stroke}" stroke-width="3" stroke-linecap="round" />`;
+            area += ` L ${x1} ${y1}`;
+            if ((p1.value - p0.value) > (metric.unit === '%' ? 2.0 : 4.0)) {
                 markers += `
-                    <line x1="${x}" y1="${pad}" x2="${x}" y2="${H - pad}" stroke="#7aa2c8" stroke-width="1" stroke-dasharray="3" />
-                    <text x="${x + 4}" y="${pad + 12}" font-size="10" fill="#5d7f9b">🌧</text>
+                    <line x1="${x1}" y1="${pad}" x2="${x1}" y2="${H - pad}" stroke="#7aa2c8" stroke-width="1" stroke-dasharray="3" />
+                    <text x="${x1 + 4}" y="${pad + 12}" font-size="10" fill="#5d7f9b">🌧</text>
                 `;
             }
         }
-        area += ` L ${getX(history[history.length - 1].timestamp)} ${H - pad} Z`;
+        area += ` L ${getX(latest.timestamp)} ${H - pad} Z`;
 
-        const latest = history[history.length - 1];
-        const mid = history[Math.floor(history.length / 2)];
-        const startLabel = new Date(history[0].timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const mid = points[Math.floor(points.length / 2)];
+        const startLabel = new Date(points[0].timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const midLabel = new Date(mid.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const endLabel = new Date(latest.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const tipLabel = `${new Date(latest.timestamp * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}: ${(latest.theta * 100).toFixed(1)}%`;
+        const tipLabel = `${new Date(latest.timestamp * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}: ${latest.value.toFixed(1)}${metric.unit}`;
 
         container.innerHTML = `
-            <svg width="100%" height="100%" viewBox="0 0 ${W} ${H}">
+            <svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
                 <defs>
                     <linearGradient id="lineFill" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stop-color="#7aa67a" stop-opacity="0.45" />
                         <stop offset="100%" stop-color="#7aa67a" stop-opacity="0.02" />
                     </linearGradient>
                 </defs>
-                <rect x="${pad}" y="${pad}" width="${W - 2 * pad}" height="${getY(0.35) - pad}" fill="rgba(122,166,122,0.1)" />
-                <rect x="${pad}" y="${getY(0.35)}" width="${W - 2 * pad}" height="${getY(0.2) - getY(0.35)}" fill="rgba(216,167,89,0.12)" />
-                <rect x="${pad}" y="${getY(0.2)}" width="${W - 2 * pad}" height="${H - pad - getY(0.2)}" fill="rgba(208,96,96,0.1)" />
-                <line x1="${pad}" y1="${getY(0.35)}" x2="${W - pad}" y2="${getY(0.35)}" stroke="#7aa67a" stroke-width="1" stroke-dasharray="4" />
-                <line x1="${pad}" y1="${getY(0.2)}" x2="${W - pad}" y2="${getY(0.2)}" stroke="#d8a759" stroke-width="1" stroke-dasharray="4" />
+                ${legendBands}
                 ${markers}
                 <path d="${area}" fill="url(#lineFill)" stroke="none" />
-                <path d="${d}" fill="none" stroke="#5f8f67" stroke-width="3" />
-                <circle cx="${getX(latest.timestamp)}" cy="${getY(latest.theta)}" r="4" fill="#5f8f67">
+                ${segments}
+                <circle cx="${getX(latest.timestamp)}" cy="${getY(latest.value)}" r="4" fill="#5f8f67">
                     <title>${tipLabel}</title>
                 </circle>
                 <line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="#b7c4be" />
@@ -1398,6 +1524,17 @@ const App = {
                 <text x="${W - pad}" y="${H - 5}" text-anchor="end" font-size="10" fill="#68786f">${endLabel}</text>
             </svg>
         `;
+
+        const stripEl = document.getElementById('chart-strip');
+        if (stripEl) {
+            const step = Math.max(1, Math.floor(points.length / 12));
+            let dots = '';
+            for (let i = 0; i < points.length; i += step) {
+                const st = metric.status(points[i].value);
+                dots += `<span class="strip-dot ${st}" title="${new Date(points[i].timestamp * 1000).toLocaleTimeString()}"></span>`;
+            }
+            stripEl.innerHTML = `${dots}<span class="strip-time">${startLabel} · ${midLabel} · ${endLabel}</span>`;
+        }
     },
 
     // --- ZONE GRID ---
@@ -1795,6 +1932,16 @@ const App = {
                 this.render();
             });
         }
+
+        document.querySelectorAll('.chart-pill').forEach((pill) => {
+            pill.classList.toggle('active', pill.dataset.metric === this.state.chartMetric);
+            pill.addEventListener('click', () => {
+                this.state.chartMetric = pill.dataset.metric;
+                document.querySelectorAll('.chart-pill').forEach((el) => el.classList.remove('active'));
+                pill.classList.add('active');
+                this.renderChart();
+            });
+        });
 
         document.addEventListener('keydown', (e) => {
             if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'd') {
