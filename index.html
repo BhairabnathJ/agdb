@@ -236,11 +236,12 @@
                 <h3 class="font-h3">Quick Setup</h3>
                 <label class="settings-label">Crop Type</label>
                 <select class="form-select" id="set-crop">
-                    <option value="maize">Maize (Corn)</option>
-                    <option value="rice">Rice</option>
-                    <option value="wheat">Wheat</option>
-                    <option value="veg">Vegetables</option>
-                    <option value="custom">Custom</option>
+                    <option value="tomato">Tomato</option>
+                </select>
+
+                <label class="settings-label" style="margin-top:12px;">Soil Type</label>
+                <select class="form-select" id="set-soil">
+                    <option value="loam">Normal / Mixed</option>
                 </select>
 
                 <label class="settings-label" style="margin-top:12px;">Planting Date</label>
@@ -332,10 +333,14 @@
     <script>
         (function () {
             try {
-                const stored = localStorage.getItem('agriscan_user_prefs');
-                if (stored) {
-                    const config = JSON.parse(stored);
-                    if (config.onboarding_complete) return;
+                const primary = localStorage.getItem('agriscan_user_prefs');
+                const legacy = localStorage.getItem('agriscan_settings');
+                const config = primary ? JSON.parse(primary) : (legacy ? JSON.parse(legacy) : null);
+                if (config && config.onboarding_complete) {
+                    if (!primary) {
+                        localStorage.setItem('agriscan_user_prefs', JSON.stringify(config));
+                    }
+                    return;
                 }
                 window.location.href = '/onboarding.html';
             } catch (e) {

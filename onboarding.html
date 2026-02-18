@@ -331,10 +331,14 @@
                 <div class="form-group">
                     <label class="form-label">Crop Type</label>
                     <select class="form-input" id="crop-type">
-                        <option value="tomatoes">Tomatoes</option>
-                        <option value="maize">Maize/Corn</option>
-                        <option value="vegetables">General vegetables</option>
-                        <option value="other">Other</option>
+                        <option value="tomato">Tomato</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Soil Type</label>
+                    <select class="form-input" id="soil-type">
+                        <option value="loam">Normal / Mixed</option>
                     </select>
                 </div>
             </div>
@@ -412,6 +416,7 @@
 
     <script>
         let currentStep = 1;
+        let thresholdsData = null;
 
         function nextStep(step) {
             document.getElementById(`step-${currentStep}`).classList.remove('active');
@@ -419,14 +424,53 @@
             currentStep = step;
         }
 
+        async function loadThresholdOptions() {
+            const cropSelect = document.getElementById('crop-type');
+            const soilSelect = document.getElementById('soil-type');
+            if (!cropSelect || !soilSelect) return;
+
+            try {
+                const response = await fetch('config/crop_thresholds.json');
+                if (!response.ok) throw new Error('Thresholds file unavailable');
+                thresholdsData = await response.json();
+
+                const crops = thresholdsData.crops || {};
+                const soils = thresholdsData.soils || {};
+
+                cropSelect.innerHTML = '';
+                Object.entries(crops).forEach(([key, value]) => {
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = value.display_name || key;
+                    cropSelect.appendChild(option);
+                });
+
+                soilSelect.innerHTML = '';
+                Object.entries(soils).forEach(([key, value]) => {
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = value.label || key;
+                    soilSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.warn('Could not load crop thresholds, using fallback options:', error);
+                cropSelect.innerHTML = '<option value="tomato">Tomato</option><option value="maize_grain">Maize (Field Corn)</option><option value="rice">Rice</option><option value="wheat_spring">Spring Wheat</option>';
+                soilSelect.innerHTML = '<option value="sandy_loam">Sandy / Light</option><option value="loam">Normal / Mixed</option><option value="clay_loam">Heavy / Clay</option><option value="clay">Very Heavy</option>';
+            }
+        }
+
         function completeSetup() {
+            const nowTs = Math.floor(Date.now() / 1000);
+
             // Gather form data
             const config = {
                 onboarding_complete: true,
                 device_name: document.getElementById('device-name').value || 'AgriScan Sensor',
                 root_depth_cm: parseInt(document.querySelector('input[name="root-depth"]:checked').value),
-                crop_type: document.getElementById('crop-type').value,
-                setup_date: new Date().toISOString(),
+                crop: document.getElementById('crop-type').value,
+                soil: document.getElementById('soil-type').value,
+                setup_date: nowTs,
+                planting_ts: nowTs,
                 farmer_name: '',
                 notes: ''
             };
@@ -454,6 +498,8 @@
                 });
             });
         });
+
+        loadThresholdOptions();
     </script>
 </body>
 

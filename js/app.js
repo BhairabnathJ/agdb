@@ -13,12 +13,52 @@
 // CONFIGURATION
 // =============================================================================
 
-const CROP_DATA = {
-    'maize': { crit: 30, warn: 50, risk: "High (Silking Stage)", kc: 1.2 },
-    'rice': { crit: 50, warn: 70, risk: "Critical (Panicle Init)", kc: 1.05 },
-    'wheat': { crit: 20, warn: 40, risk: "Moderate (Tillering)", kc: 1.15 },
-    'veg': { crit: 35, warn: 55, risk: "Very High (Fruiting)", kc: 1.0 },
-    'custom': { crit: 30, warn: 50, risk: "Unknown", kc: 1.0 }
+const THRESHOLDS_STORE = {
+    data: null,
+
+    async load() {
+        if (this.data) return this.data;
+        const res = await fetch('config/crop_thresholds.json');
+        if (!res.ok) throw new Error('Failed to load crop_thresholds.json');
+        this.data = await res.json();
+        return this.data;
+    },
+
+    getCrop(cropKey) {
+        return this.data?.crops?.[cropKey] || null;
+    },
+
+    getSoil(soilKey) {
+        return this.data?.soils?.[soilKey] || null;
+    },
+
+    getCropStage(cropKey, plantingTs) {
+        const crop = this.getCrop(cropKey);
+        if (!crop || !Array.isArray(crop.stages) || crop.stages.length === 0) return null;
+
+        const startTs = Number(plantingTs || 0);
+        const days = startTs > 0 ? Math.max(0, Math.floor((Date.now() / 1000 - startTs) / 86400)) : 0;
+        return crop.stages.find((stage) => days >= stage.day_start && days <= stage.day_end)
+            || crop.stages[crop.stages.length - 1];
+    },
+
+    getThresholds(cropKey, soilKey, plantingTs) {
+        const soil = this.getSoil(soilKey);
+        const stage = this.getCropStage(cropKey, plantingTs);
+        if (!soil || !stage) return null;
+
+        const thetaFc = Number(soil.theta_fc);
+        const thetaWp = Number(soil.theta_wp);
+        const p = Number(stage.p);
+        const thetaRefill = thetaFc - p * (thetaFc - thetaWp);
+
+        return {
+            theta_fc: thetaFc,
+            theta_wp: thetaWp,
+            p,
+            theta_refill: thetaRefill
+        };
+    }
 };
 
 // Zone configuration for multi-sensor simulation
@@ -420,7 +460,7 @@ const MockAPI = {
         const stored = localStorage.getItem('agriscan_user_prefs');
         if (stored) {
             try {
-                return JSON.parse(stored);
+                return App.normalizePrefs(JSON.parse(stored));
             } catch (e) {
                 Logger.log('ERROR', 'Config parse error', e);
             }
@@ -430,8 +470,10 @@ const MockAPI = {
             onboarding_complete: false,
             device_name: '',
             root_depth_cm: 30,
-            crop_type: 'tomatoes',
+            crop: 'tomato',
+            soil: 'loam',
             setup_date: null,
+            planting_ts: null,
             farmer_name: '',
             notes: ''
         };
@@ -818,12 +860,14 @@ const App = {
             tempUnit: 'c',
             threshCritical: 30,
             threshWarning: 50,
-            crop: 'maize',
-            plantingDate: null
+            crop: 'tomato',
+            soil: 'loam',
+            plantingDate: null,
+            planting_ts: null
         }
     },
 
-    init: function () {
+    init: async function () {
         Logger.log('UI', 'Initializing AgriScan App...');
 
         // Initialize I18n
@@ -834,6 +878,7 @@ const App = {
         // Initialize MockAPI
         MockAPI.init();
 
+        await this.loadThresholdsData();
         this.loadSettings();
 
         // Set default planting date
@@ -842,13 +887,12 @@ const App = {
             d.setDate(d.getDate() - 45);
             this.state.settings.plantingDate = d.toISOString().split('T')[0];
         }
-
-        // Sync crop thresholds
-        const c = this.state.settings.crop;
-        if (CROP_DATA[c]) {
-            this.state.settings.threshCritical = CROP_DATA[c].crit;
-            this.state.settings.threshWarning = CROP_DATA[c].warn;
+        if (!this.state.settings.planting_ts && this.state.settings.plantingDate) {
+            this.state.settings.planting_ts = Math.floor(new Date(this.state.settings.plantingDate).getTime() / 1000);
         }
+
+        this.applyThresholdConfig();
+        this.persistCanonicalSettings();
 
         // Seed initial data
         MockAPI.seed();
@@ -893,7 +937,8 @@ const App = {
         document.getElementById('settings').classList.add('active');
 
         const s = this.state.settings;
-        if (document.getElementById('set-crop')) document.getElementById('set-crop').value = s.crop || 'maize';
+        if (document.getElementById('set-crop')) document.getElementById('set-crop').value = s.crop || 'tomato';
+        if (document.getElementById('set-soil')) document.getElementById('set-soil').value = s.soil || 'loam';
         if (document.getElementById('set-date')) document.getElementById('set-date').value = s.plantingDate;
         if (document.getElementById('set-flow')) document.getElementById('set-flow').value = s.flowRate || 1000;
         if (document.getElementById('set-lang')) document.getElementById('set-lang').value = I18n?.getLang() || 'en';
@@ -908,14 +953,16 @@ const App = {
         const cropEl = document.getElementById('set-crop');
         if (cropEl) {
             s.crop = cropEl.value;
-            if (CROP_DATA[s.crop]) {
-                s.threshCritical = CROP_DATA[s.crop].crit;
-                s.threshWarning = CROP_DATA[s.crop].warn;
-            }
+        }
+
+        const soilEl = document.getElementById('set-soil');
+        if (soilEl) {
+            s.soil = soilEl.value;
         }
 
         const dateEl = document.getElementById('set-date');
         if (dateEl) s.plantingDate = dateEl.value;
+        if (s.plantingDate) s.planting_ts = Math.floor(new Date(s.plantingDate).getTime() / 1000);
 
         const flowEl = document.getElementById('set-flow');
         if (flowEl) s.flowRate = parseFloat(flowEl.value);
@@ -923,7 +970,8 @@ const App = {
         const critEl = document.getElementById('set-crit-slide');
         if (critEl) s.threshCritical = parseInt(critEl.value);
 
-        localStorage.setItem('agriscan_settings', JSON.stringify(s));
+        this.applyThresholdConfig();
+        this.persistCanonicalSettings();
         Logger.log('UI', 'Settings saved', s);
         this.updateData();
         alert("Configuration Saved!");
@@ -931,14 +979,122 @@ const App = {
     },
 
     loadSettings: function () {
-        const saved = localStorage.getItem('agriscan_settings');
-        if (saved) {
-            try {
-                this.state.settings = { ...this.state.settings, ...JSON.parse(saved) };
-                Logger.log('UI', 'Settings loaded from localStorage');
-            } catch (e) {
-                Logger.log('ERROR', 'Settings parse error', e);
-            }
+        try {
+            const canonicalRaw = localStorage.getItem('agriscan_user_prefs');
+            const legacyRaw = localStorage.getItem('agriscan_settings');
+
+            const canonical = canonicalRaw ? this.normalizePrefs(JSON.parse(canonicalRaw)) : {};
+            const legacy = legacyRaw ? this.normalizePrefs(JSON.parse(legacyRaw)) : {};
+            const merged = { ...legacy, ...canonical };
+
+            this.state.settings = {
+                ...this.state.settings,
+                crop: merged.crop || this.state.settings.crop,
+                soil: merged.soil || this.state.settings.soil,
+                plantingDate: merged.plantingDate || this.state.settings.plantingDate,
+                planting_ts: merged.planting_ts || this.state.settings.planting_ts,
+                flowRate: merged.flowRate ?? this.state.settings.flowRate
+            };
+            Logger.log('UI', 'Settings loaded from localStorage');
+        } catch (e) {
+            Logger.log('ERROR', 'Settings parse error', e);
+        }
+    },
+
+    normalizePrefs: function (raw) {
+        const setupTs = typeof raw.setup_date === 'string'
+            ? Math.floor(new Date(raw.setup_date).getTime() / 1000)
+            : (raw.setup_date || null);
+
+        const plantingTs = raw.planting_ts
+            || (raw.plantingDate ? Math.floor(new Date(raw.plantingDate).getTime() / 1000) : null)
+            || setupTs;
+
+        const plantingDate = raw.plantingDate
+            || (plantingTs ? new Date(plantingTs * 1000).toISOString().split('T')[0] : null);
+
+        return {
+            onboarding_complete: Boolean(raw.onboarding_complete),
+            crop: raw.crop || raw.crop_type || null,
+            soil: raw.soil || null,
+            setup_date: setupTs,
+            planting_ts: plantingTs,
+            plantingDate,
+            flowRate: raw.flowRate
+        };
+    },
+
+    persistCanonicalSettings: function () {
+        const s = this.state.settings;
+        const setupDate = Math.floor(Date.now() / 1000);
+        const payload = {
+            onboarding_complete: true,
+            device_name: 'AgriScan Sensor',
+            root_depth_cm: 30,
+            crop: s.crop,
+            soil: s.soil,
+            setup_date: setupDate,
+            planting_ts: s.planting_ts || setupDate,
+            farmer_name: '',
+            notes: '',
+            plantingDate: s.plantingDate,
+            flowRate: s.flowRate
+        };
+        localStorage.setItem('agriscan_user_prefs', JSON.stringify(payload));
+        localStorage.removeItem('agriscan_settings');
+    },
+
+    loadThresholdsData: async function () {
+        try {
+            await THRESHOLDS_STORE.load();
+            this.populateThresholdSelectors();
+        } catch (e) {
+            Logger.log('ERROR', 'Failed to load thresholds data', e);
+        }
+    },
+
+    populateThresholdSelectors: function () {
+        const cropEl = document.getElementById('set-crop');
+        const soilEl = document.getElementById('set-soil');
+        const data = THRESHOLDS_STORE.data;
+        if (!data) return;
+
+        if (cropEl) {
+            cropEl.innerHTML = '';
+            Object.entries(data.crops || {}).forEach(([key, crop]) => {
+                const option = document.createElement('option');
+                option.value = key;
+                option.textContent = crop.display_name || key;
+                cropEl.appendChild(option);
+            });
+        }
+
+        if (soilEl) {
+            soilEl.innerHTML = '';
+            Object.entries(data.soils || {}).forEach(([key, soil]) => {
+                const option = document.createElement('option');
+                option.value = key;
+                option.textContent = soil.label || key;
+                soilEl.appendChild(option);
+            });
+        }
+    },
+
+    applyThresholdConfig: function () {
+        const s = this.state.settings;
+        const thresholdConfig = THRESHOLDS_STORE.getThresholds(s.crop, s.soil, s.planting_ts);
+        if (!thresholdConfig) return;
+
+        s.threshCritical = Math.round(thresholdConfig.theta_refill * 100);
+        s.threshWarning = Math.round(thresholdConfig.theta_fc * 100);
+
+        if (typeof Physics !== 'undefined' && Physics.configureCropSoil) {
+            Physics.configureCropSoil({
+                crop: s.crop,
+                soil: s.soil,
+                planting_ts: s.planting_ts,
+                ...thresholdConfig
+            });
         }
     },
 
@@ -1038,8 +1194,11 @@ const App = {
         if (s.urgency === 'high') {
             const liYield = document.createElement('li');
             liYield.style.color = '#C62828';
-            const cropRisk = CROP_DATA[this.state.settings.crop]?.risk || "Unknown";
-            liYield.innerHTML = `⚠️ <strong>Yield Risk: ${cropRisk}</strong>`;
+            const cropMeta = THRESHOLDS_STORE.getCrop(this.state.settings.crop);
+            const stageMeta = THRESHOLDS_STORE.getCropStage(this.state.settings.crop, this.state.settings.planting_ts);
+            const cropLabel = cropMeta?.display_name || this.state.settings.crop || "Unknown";
+            const stageLabel = stageMeta?.name || "current stage";
+            liYield.innerHTML = `⚠️ <strong>Yield Risk: Elevated for ${cropLabel} (${stageLabel})</strong>`;
             list.appendChild(liYield);
         }
 

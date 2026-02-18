@@ -2,8 +2,10 @@
     "onboarding_complete": false,
     "device_name": "",
     "root_depth_cm": 30,
-    "crop_type": "tomatoes",
+    "crop": "tomato",
+    "soil": "loam",
     "setup_date": null,
+    "planting_ts": null,
     "farmer_name": "",
     "notes": ""
 }

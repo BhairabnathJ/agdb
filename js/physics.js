@@ -70,6 +70,16 @@ const DEFAULT_SOIL = {
     theta_pwp: null    // Permanent wilting point
 };
 
+const EXTERNAL_CONFIG = {
+    crop: null,
+    soil: null,
+    planting_ts: null,
+    p: null,
+    theta_fc: null,
+    theta_wp: null,
+    theta_refill: null
+};
+
 // =============================================================================
 // UTILITY FUNCTIONS
 // =============================================================================
@@ -271,8 +281,12 @@ class SoilModel {
 
         // Calculate default FC/PWP using van Genuchten at standard potentials
         // FC typically at -33 kPa (pF 2.5), PWP at -1500 kPa (pF 4.2)
-        this.params.theta_fc = this.vanGenuchten_theta(330); // 33 kPa = 330 cm H2O
-        this.params.theta_pwp = this.vanGenuchten_theta(15000); // 1500 kPa = 15000 cm
+        if (this.params.theta_fc === null || this.params.theta_fc === undefined) {
+            this.params.theta_fc = this.vanGenuchten_theta(330); // 33 kPa = 330 cm H2O
+        }
+        if (this.params.theta_pwp === null || this.params.theta_pwp === undefined) {
+            this.params.theta_pwp = this.vanGenuchten_theta(15000); // 1500 kPa = 15000 cm
+        }
     }
 
     /**
@@ -1002,6 +1016,40 @@ class PhysicsEngine {
         this.maxHistoryLength = 2880; // 30 days at 15-min intervals
     }
 
+    configureCropSoil(config = {}) {
+        EXTERNAL_CONFIG.crop = config.crop || EXTERNAL_CONFIG.crop;
+        EXTERNAL_CONFIG.soil = config.soil || EXTERNAL_CONFIG.soil;
+        EXTERNAL_CONFIG.planting_ts = config.planting_ts || EXTERNAL_CONFIG.planting_ts;
+
+        if (typeof config.p === 'number' && !Number.isNaN(config.p)) {
+            EXTERNAL_CONFIG.p = config.p;
+            CONFIG.eta_refill = config.p;
+        }
+
+        if (typeof config.theta_fc === 'number' && !Number.isNaN(config.theta_fc)) {
+            EXTERNAL_CONFIG.theta_fc = config.theta_fc;
+            this.soilModel.params.theta_fc = config.theta_fc;
+            this.autoCalibration.theta_fc_star = config.theta_fc;
+        }
+
+        if (typeof config.theta_wp === 'number' && !Number.isNaN(config.theta_wp)) {
+            EXTERNAL_CONFIG.theta_wp = config.theta_wp;
+            this.soilModel.params.theta_pwp = config.theta_wp;
+        }
+
+        if (typeof config.theta_refill === 'number' && !Number.isNaN(config.theta_refill)) {
+            EXTERNAL_CONFIG.theta_refill = config.theta_refill;
+            this.autoCalibration.theta_refill_star = config.theta_refill;
+        } else if (
+            EXTERNAL_CONFIG.theta_fc !== null &&
+            EXTERNAL_CONFIG.theta_wp !== null &&
+            EXTERNAL_CONFIG.p !== null
+        ) {
+            this.autoCalibration.theta_refill_star =
+                EXTERNAL_CONFIG.theta_fc - EXTERNAL_CONFIG.p * (EXTERNAL_CONFIG.theta_fc - EXTERNAL_CONFIG.theta_wp);
+        }
+    }
+
     /**
      * Process new sensor reading
      * This is the main entry point
@@ -1639,7 +1687,7 @@ if (typeof window !== 'undefined') {
 // =============================================================================
 
 // Ensure the global 'Physics' object exists as expected by main.cpp
-// main.cpp calls: Physics.processSensorReading(raw, temp, ts)
+// Runtime consumers call: Physics.processSensorReading(raw, temp, ts)
 
 if (typeof window !== 'undefined' && window.AgriScanPhysics) {
     // Instantiate the engine
