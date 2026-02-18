@@ -142,32 +142,6 @@
                 </div>
             </div>
 
-            <!-- Admin Simulator (Feat from sch.txt) -->
-            <div class="settings-group" style="padding-top:16px; border-top:1px solid #eee;">
-                <h3 class="font-h3">Data Simulator</h3>
-                <div class="action-grid">
-                    <button class="btn-secondary" onclick="App.simulateRain()"
-                        style="color:blue; border-color:blue;">Simulate Rain</button>
-                    <button class="btn-secondary" onclick="App.simulateDrought()"
-                        style="color:orange; border-color:orange;">Simulate Drought</button>
-                </div>
-                <div class="action-grid" style="margin-top:12px;">
-                    <button class="btn-secondary" id="btn-long-run" onclick="App.simulateLongRun()"
-                        style="color:#6A1B9A; border-color:#6A1B9A;">10-Min Simulation</button>
-                    <button class="btn-secondary" id="btn-stop-sim" onclick="App.stopSimulation()"
-                        style="color:#C62828; border-color:#C62828;" disabled>Stop</button>
-                </div>
-                <div id="sim-countdown" class="sim-countdown" style="display:none;">
-                    <span id="sim-phase">--</span> | <span id="sim-time">00:00</span>
-                </div>
-                <div class="action-grid" style="margin-top:12px;">
-                    <button class="btn-secondary" onclick="App.exportSimulationLogs()"
-                        style="color:#00695C; border-color:#00695C;">Export Logs (JSON)</button>
-                    <button class="btn-secondary" onclick="App.exportAllData()"
-                        style="color:#37474F; border-color:#37474F;">Export Full Data</button>
-                </div>
-            </div>
-
             <!-- Actions -->
             <div class="action-grid">
                 <button class="btn-secondary" onclick="App.navigate('map')">View Field Map</button>
@@ -175,8 +149,7 @@
             </div>
             <div class="action-grid" style="margin-top:8px;">
                 <button class="btn-secondary" onclick="App.navigate('settings')">View Settings</button>
-                <button class="btn-secondary" onclick="App.goToDiagnostics()"
-                    style="color:#1565C0; border-color:#1565C0;">System Diagnostics</button>
+                <button class="btn-secondary" onclick="App.toggleDevMode()">Open Dev Tools</button>
             </div>
 
         </section>
@@ -360,6 +333,38 @@
         </section>
 
     </main>
+    <div id="dev-indicator" class="dev-indicator">DEV MODE</div>
+    <aside id="dev-panel" class="dev-panel" aria-label="Developer tools">
+        <div class="view-header">
+            <h2 class="font-h2">Developer Tools</h2>
+            <button class="btn-secondary" onclick="App.toggleDevMode()">Close</button>
+        </div>
+        <div class="settings-group">
+            <h3 class="font-h3">Simulation</h3>
+            <div class="action-grid">
+                <button class="btn-secondary" onclick="App.simulateRain()">Simulate Rain</button>
+                <button class="btn-secondary" onclick="App.simulateDrought()">Simulate Drought</button>
+            </div>
+            <div class="action-grid" style="margin-top:12px;">
+                <button class="btn-secondary" id="btn-long-run" onclick="App.simulateLongRun()">10-Min Simulation</button>
+                <button class="btn-secondary" id="btn-stop-sim" onclick="App.stopSimulation()" disabled>Stop</button>
+            </div>
+            <div id="sim-countdown" class="sim-countdown" style="display:none;">
+                <span id="sim-phase">--</span> | <span id="sim-time">00:00</span>
+            </div>
+        </div>
+        <div class="settings-group">
+            <h3 class="font-h3">Diagnostics & Exports</h3>
+            <div class="action-grid">
+                <button class="btn-secondary" onclick="App.exportSimulationLogs()">Export Logs (JSON)</button>
+                <button class="btn-secondary" onclick="App.exportAllData()">Export Full Data</button>
+            </div>
+            <div class="action-grid" style="margin-top:12px;">
+                <button class="btn-secondary" onclick="App.goToDiagnostics()">System Diagnostics</button>
+                <button class="btn-secondary" onclick="App.resetSimulationState()">Reset Simulation</button>
+            </div>
+        </div>
+    </aside>
     <nav class="bottom-nav" aria-label="Primary">
         <button id="nav-home" class="nav-item active" onclick="App.navigate('home')">Home</button>
         <button id="nav-map" class="nav-item" onclick="App.navigate('map')">Field Map</button>

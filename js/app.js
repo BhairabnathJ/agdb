@@ -1522,6 +1522,20 @@ const App = {
         window.location.href = 'diagnostics.html';
     },
 
+    toggleDevMode: function () {
+        document.body.classList.toggle('dev-mode');
+    },
+
+    resetSimulationState: function () {
+        Simulator.stop();
+        Simulator.logs = [];
+        Simulator.tickCount = 0;
+        Simulator.currentPhase = 'IDLE';
+        const simCountdown = document.getElementById('sim-countdown');
+        if (simCountdown) simCountdown.style.display = 'none';
+        Logger.log('SIMULATION', 'Simulation state reset');
+    },
+
     // --- LIVE SENSOR DATA OUTPUT ---
     refreshSensorData: function () {
         const sample = this.state.currentSample;
@@ -1586,6 +1600,13 @@ const App = {
                 this.render();
             });
         }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'd') {
+                e.preventDefault();
+                this.toggleDevMode();
+            }
+        });
     }
 };
 
