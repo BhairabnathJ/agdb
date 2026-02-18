@@ -1339,29 +1339,61 @@ const App = {
         const getY = v => H - pad - ((v - vMin) / (vMax - vMin)) * (H - 2 * pad);
 
         let d = `M ${getX(history[0].timestamp)} ${getY(history[0].theta)}`;
+        let area = `M ${getX(history[0].timestamp)} ${H - pad} L ${getX(history[0].timestamp)} ${getY(history[0].theta)}`;
         let markers = '';
+        let lastDelta = history[history.length - 1].theta - history[history.length - 2].theta;
+        const trendEl = document.getElementById('chart-trend');
+        if (trendEl) {
+            let trendLabel = 'Trend: → Stable';
+            if (lastDelta > 0.002) trendLabel = 'Trend: ↗ Increasing';
+            if (lastDelta < -0.002) trendLabel = 'Trend: ↘ Decreasing';
+            trendEl.textContent = trendLabel;
+        }
 
         for (let i = 1; i < history.length; i++) {
             d += ` L ${getX(history[i].timestamp)} ${getY(history[i].theta)}`;
+            area += ` L ${getX(history[i].timestamp)} ${getY(history[i].theta)}`;
             if ((history[i].theta - history[i - 1].theta) > 0.02) {
                 const x = getX(history[i].timestamp);
-                markers += `<line x1="${x}" y1="${pad}" x2="${x}" y2="${H - pad}" stroke="#2196F3" stroke-width="1" stroke-dasharray="2" />`;
+                markers += `
+                    <line x1="${x}" y1="${pad}" x2="${x}" y2="${H - pad}" stroke="#7aa2c8" stroke-width="1" stroke-dasharray="3" />
+                    <text x="${x + 4}" y="${pad + 12}" font-size="10" fill="#5d7f9b">🌧</text>
+                `;
             }
         }
+        area += ` L ${getX(history[history.length - 1].timestamp)} ${H - pad} Z`;
+
+        const latest = history[history.length - 1];
+        const mid = history[Math.floor(history.length / 2)];
+        const startLabel = new Date(history[0].timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const midLabel = new Date(mid.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const endLabel = new Date(latest.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const tipLabel = `${new Date(latest.timestamp * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}: ${(latest.theta * 100).toFixed(1)}%`;
 
         container.innerHTML = `
             <svg width="100%" height="100%" viewBox="0 0 ${W} ${H}">
-                <rect x="${pad}" y="${getY(0.35)}" width="${W - 2 * pad}" height="${getY(0.25) - getY(0.35)}" fill="rgba(46,125,50,0.1)" />
-                <line x1="${pad}" y1="${getY(0.32)}" x2="${W - pad}" y2="${getY(0.32)}" stroke="#2E7D32" stroke-width="1" stroke-dasharray="4" />
-                <text x="${W - pad - 5}" y="${getY(0.32) - 3}" text-anchor="end" font-size="10" fill="#2E7D32">FC</text>
-                <line x1="${pad}" y1="${getY(0.12)}" x2="${W - pad}" y2="${getY(0.12)}" stroke="#C62828" stroke-width="1" stroke-dasharray="4" />
-                <text x="${W - pad - 5}" y="${getY(0.12) - 3}" text-anchor="end" font-size="10" fill="#C62828">WP</text>
+                <defs>
+                    <linearGradient id="lineFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#7aa67a" stop-opacity="0.45" />
+                        <stop offset="100%" stop-color="#7aa67a" stop-opacity="0.02" />
+                    </linearGradient>
+                </defs>
+                <rect x="${pad}" y="${pad}" width="${W - 2 * pad}" height="${getY(0.35) - pad}" fill="rgba(122,166,122,0.1)" />
+                <rect x="${pad}" y="${getY(0.35)}" width="${W - 2 * pad}" height="${getY(0.2) - getY(0.35)}" fill="rgba(216,167,89,0.12)" />
+                <rect x="${pad}" y="${getY(0.2)}" width="${W - 2 * pad}" height="${H - pad - getY(0.2)}" fill="rgba(208,96,96,0.1)" />
+                <line x1="${pad}" y1="${getY(0.35)}" x2="${W - pad}" y2="${getY(0.35)}" stroke="#7aa67a" stroke-width="1" stroke-dasharray="4" />
+                <line x1="${pad}" y1="${getY(0.2)}" x2="${W - pad}" y2="${getY(0.2)}" stroke="#d8a759" stroke-width="1" stroke-dasharray="4" />
                 ${markers}
-                <path d="${d}" fill="none" stroke="#2E7D32" stroke-width="2" />
-                <line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="#ccc" />
-                <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H - pad}" stroke="#ccc" />
-                <text x="${pad}" y="${H - 5}" font-size="10" fill="#666">Start</text>
-                <text x="${W - pad}" y="${H - 5}" text-anchor="end" font-size="10" fill="#666">Now</text>
+                <path d="${area}" fill="url(#lineFill)" stroke="none" />
+                <path d="${d}" fill="none" stroke="#5f8f67" stroke-width="3" />
+                <circle cx="${getX(latest.timestamp)}" cy="${getY(latest.theta)}" r="4" fill="#5f8f67">
+                    <title>${tipLabel}</title>
+                </circle>
+                <line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="#b7c4be" />
+                <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H - pad}" stroke="#b7c4be" />
+                <text x="${pad}" y="${H - 5}" font-size="10" fill="#68786f">${startLabel}</text>
+                <text x="${W / 2}" y="${H - 5}" text-anchor="middle" font-size="10" fill="#68786f">${midLabel}</text>
+                <text x="${W - pad}" y="${H - 5}" text-anchor="end" font-size="10" fill="#68786f">${endLabel}</text>
             </svg>
         `;
     },
