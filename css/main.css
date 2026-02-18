@@ -300,6 +300,39 @@ body {
     margin-bottom: var(--space-6);
 }
 
+.settings-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
+    margin-bottom: var(--space-5);
+}
+
+.settings-tab {
+    border: 1px solid var(--neutral-300);
+    background: #fff;
+    color: var(--neutral-700);
+    border-radius: 10px;
+    padding: 10px 8px;
+    font: inherit;
+    font-size: 0.86rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.settings-tab.active {
+    background: linear-gradient(145deg, var(--sage-500), var(--sage-700));
+    color: #fff;
+    border-color: transparent;
+}
+
+.settings-panel {
+    display: none;
+}
+
+.settings-panel.active {
+    display: block;
+}
+
 .settings-label {
     display: block;
     font-weight: 600;

@@ -979,9 +979,17 @@ const App = {
         if (document.getElementById('set-date')) document.getElementById('set-date').value = s.plantingDate;
         if (document.getElementById('set-flow')) document.getElementById('set-flow').value = s.flowRate || 1000;
         if (document.getElementById('set-lang')) document.getElementById('set-lang').value = I18n?.getLang() || 'en';
+        this.openSettingsTab('field');
 
-        // Auto-refresh live sensor data
-        this.refreshSensorData();
+    },
+
+    openSettingsTab: function (tabName) {
+        document.querySelectorAll('.settings-tab').forEach((tab) => {
+            tab.classList.toggle('active', tab.dataset.settingsTab === tabName);
+        });
+        document.querySelectorAll('.settings-panel').forEach((panel) => {
+            panel.classList.toggle('active', panel.dataset.settingsPanel === tabName);
+        });
     },
 
     saveSettings: function () {
@@ -1003,9 +1011,6 @@ const App = {
 
         const flowEl = document.getElementById('set-flow');
         if (flowEl) s.flowRate = parseFloat(flowEl.value);
-
-        const critEl = document.getElementById('set-crit-slide');
-        if (critEl) s.threshCritical = parseInt(critEl.value);
 
         this.applyThresholdConfig();
         this.persistCanonicalSettings();
