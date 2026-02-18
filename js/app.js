@@ -853,6 +853,7 @@ const Simulator = {
 const App = {
     state: {
         currentTier: 1,
+        currentView: 'home',
         currentSample: null,
         selectedZone: null,  // No zone selected by default
         history: [],
@@ -899,6 +900,7 @@ const App = {
 
         this.setupListeners();
         this.renderZoneGrid();
+        this.syncBottomNav('home');
         this.updateData();
 
         // Polling loop
@@ -920,21 +922,56 @@ const App = {
     },
 
     // --- NAVIGATION ---
-    goToTier: function (tier) {
-        this.state.currentTier = tier;
+    navigate: function (view) {
+        const routeToSection = {
+            home: 'tier-1',
+            homeInsights: 'tier-2',
+            history: 'tier-3',
+            map: 'tier-map',
+            settings: 'settings'
+        };
+        const sectionId = routeToSection[view] || 'tier-1';
+        this.state.currentView = view;
+        this.showSection(sectionId);
+        this.syncBottomNav(view);
+    },
+
+    showSection: function (sectionId) {
         document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-        const tierEl = document.getElementById(`tier-${tier}`);
-        if (tierEl) {
-            tierEl.classList.add('active');
-            Logger.log('UI', `Navigated to Tier ${tier}`);
+        const section = document.getElementById(sectionId);
+        if (section) section.classList.add('active');
+        Logger.log('UI', `Navigated to ${sectionId}`);
+
+        if (sectionId === 'tier-3') this.renderTier3();
+        if (sectionId === 'tier-map') this.renderZoneGrid();
+    },
+
+    syncBottomNav: function (view) {
+        const activeByView = {
+            home: 'nav-home',
+            homeInsights: 'nav-home',
+            history: 'nav-history',
+            map: 'nav-map',
+            settings: 'nav-settings'
+        };
+        document.querySelectorAll('.nav-item').forEach((el) => el.classList.remove('active'));
+        const activeId = activeByView[view];
+        if (activeId) {
+            const activeEl = document.getElementById(activeId);
+            if (activeEl) activeEl.classList.add('active');
         }
-        if (tier === 3) this.renderTier3();
-        if (tier === 'map') this.renderZoneGrid();
+    },
+
+    goToTier: function (tier) {
+        if (tier === 1) return this.navigate('home');
+        if (tier === 2) return this.navigate('homeInsights');
+        if (tier === 3) return this.navigate('history');
+        if (tier === 'map') return this.navigate('map');
+        this.navigate('home');
     },
 
     goToSettings: function () {
-        document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-        document.getElementById('settings').classList.add('active');
+        this.navigate('settings');
 
         const s = this.state.settings;
         if (document.getElementById('set-crop')) document.getElementById('set-crop').value = s.crop || 'tomato';
@@ -1099,11 +1136,7 @@ const App = {
     },
 
     goToMap: function () {
-        document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-        document.getElementById('tier-map').classList.add('active');
-        this.renderZoneGrid();
-
-        Logger.log('UI', 'Navigated to Zone Map');
+        this.navigate('map');
     },
 
     getDaysAfterPlanting: function () {
@@ -1125,7 +1158,8 @@ const App = {
         if (!this.state.currentSample) return;
         this.renderTier1();
         this.renderTier2();
-        if (this.state.currentTier === 3) this.renderTier3();
+        const historySection = document.getElementById('tier-3');
+        if (historySection && historySection.classList.contains('active')) this.renderTier3();
 
         // Only update zone UI if map section exists and is active
         const mapSection = document.getElementById('tier-map');

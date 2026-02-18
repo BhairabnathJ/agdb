@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AgriScan - Tiered View</title>
+    <title>AgriScan Dashboard</title>
     <link rel="stylesheet" href="/css/main.css">
     <script src="/js/physics.js"></script>
     <script src="/js/i18n.js"></script>
@@ -16,7 +16,7 @@
 
     <main class="container">
 
-        <!-- TIER 1: Simple Mode (Default) -->
+        <!-- Home -->
         <section id="tier-1" class="view-section active">
             <!-- Status Icon -->
             <div class="status-hero">
@@ -29,8 +29,8 @@
 
             <!-- Actions -->
             <div class="hero-actions">
-                <button class="btn-primary btn-large" onclick="App.goToTier(2)">Why?</button>
-                <button class="btn-secondary btn-large" onclick="App.goToTier(3)">Show Details</button>
+                <button class="btn-primary btn-large" onclick="App.navigate('homeInsights')">Quick View</button>
+                <button class="btn-secondary btn-large" onclick="App.navigate('history')">Field Details</button>
             </div>
 
             <div class="hero-footer">
@@ -48,10 +48,10 @@
         </section>
 
 
-        <!-- TIER 2: Reasoning Mode -->
+        <!-- Home Insights -->
         <section id="tier-2" class="view-section">
             <div class="view-header">
-                <h2 class="font-h2">Why do I need to water?</h2>
+                <h2 class="font-h2">Today's Field Insight</h2>
             </div>
 
             <div class="reasoning-card">
@@ -61,16 +61,16 @@
             </div>
 
             <div class="action-stack">
-                <button class="btn-primary btn-full" onclick="App.goToTier(1)">OK, Got It</button>
-                <button class="btn-ghost btn-full" onclick="App.goToTier(3)">Show Technical Details</button>
+                <button class="btn-primary btn-full" onclick="App.navigate('home')">Back to Home</button>
+                <button class="btn-ghost btn-full" onclick="App.navigate('history')">Open History</button>
             </div>
         </section>
 
 
-        <!-- TIER 3: Expert Mode -->
+        <!-- History -->
         <section id="tier-3" class="view-section">
             <div class="view-header">
-                <button class="btn-text" onclick="App.goToTier(1)">‹ Back to Simple View</button>
+                <button class="btn-text" onclick="App.navigate('home')">‹ Back to Home</button>
             </div>
 
             <!-- Current Readings Grid (Updated for VWC/Psi) -->
@@ -137,11 +137,11 @@
 
             <!-- Actions -->
             <div class="action-grid">
-                <button class="btn-secondary" onclick="App.goToMap()">View Zone Map</button>
+                <button class="btn-secondary" onclick="App.navigate('map')">View Field Map</button>
                 <button class="btn-secondary" onclick="App.exportCSV()">Download DB</button>
             </div>
             <div class="action-grid" style="margin-top:8px;">
-                <button class="btn-secondary" onclick="App.goToSettings()">View Settings</button>
+                <button class="btn-secondary" onclick="App.navigate('settings')">View Settings</button>
                 <button class="btn-secondary" onclick="App.goToDiagnostics()"
                     style="color:#1565C0; border-color:#1565C0;">System Diagnostics</button>
             </div>
@@ -149,10 +149,10 @@
         </section>
 
 
-        <!-- TIER MAP: Zone/Area View -->
+        <!-- Field Map -->
         <section id="tier-map" class="view-section">
             <div class="view-header">
-                <button class="btn-text" onclick="App.goToTier(3)">‹ Back</button>
+                <button class="btn-text" onclick="App.navigate('history')">‹ Back</button>
                 <h2 class="font-h2">Field Zones</h2>
             </div>
 
@@ -219,7 +219,7 @@
             </div>
 
             <div class="action-grid" style="margin-top:24px;">
-                <button class="btn-secondary" onclick="App.goToTier(3)">Back to Dashboard</button>
+                <button class="btn-secondary" onclick="App.navigate('history')">Back to Dashboard</button>
             </div>
         </section>
 
@@ -227,7 +227,7 @@
         <!-- SETTINGS INFO -->
         <section id="settings" class="view-section">
             <div class="view-header">
-                <button class="btn-text" onclick="App.goToTier(3)">‹ Back</button>
+                <button class="btn-text" onclick="App.navigate('history')">‹ Back</button>
                 <h2 class="font-h2">Settings</h2>
             </div>
 
@@ -327,6 +327,12 @@
         </section>
 
     </main>
+    <nav class="bottom-nav" aria-label="Primary">
+        <button id="nav-home" class="nav-item active" onclick="App.navigate('home')">Home</button>
+        <button id="nav-map" class="nav-item" onclick="App.navigate('map')">Field Map</button>
+        <button id="nav-history" class="nav-item" onclick="App.navigate('history')">History</button>
+        <button id="nav-settings" class="nav-item" onclick="App.navigate('settings')">Settings</button>
+    </nav>
 
     <script src="js/physics.js"></script>
     <script src="js/i18n.js"></script>
