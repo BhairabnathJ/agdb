@@ -874,6 +874,8 @@ const App = {
         currentTier: 1,
         currentView: 'home',
         chartMetric: 'theta_pct',
+        chartView: 'field_avg',
+        chartRangeHours: 12,
         currentSample: null,
         selectedZone: null,  // No zone selected by default
         problemFirst: false,
@@ -1396,6 +1398,8 @@ const App = {
         const W = container.clientWidth || 300;
         const H = container.clientHeight || 260;
         const pad = 28;
+        const nowTs = Math.floor(Date.now() / 1000);
+        const rangeSeconds = (this.state.chartRangeHours || 12) * 3600;
 
         const metricDefs = {
             theta_pct: {
@@ -1412,7 +1416,7 @@ const App = {
                 value: (h) => h.AW_mm ?? 0,
                 domain: (vals) => ({ min: 0, max: Math.max(80, Math.ceil(Math.max(...vals) / 10) * 10) }),
                 status: (v) => (v < 20 ? 'critical' : (v < 40 ? 'warning' : 'healthy')),
-                bands: [{ from: 40, to: null, color: 'rgba(122,166,122,0.10)' }, { from: 20, to: 40, color: 'rgba(216,167,89,0.12)' }, { from: 0, to: 20, color: 'rgba(208,96,96,0.10)' }]
+                bands: [{ from: 40, to: null, color: 'rgba(95,141,78,0.10)' }, { from: 20, to: 40, color: 'rgba(244,162,97,0.12)' }, { from: 0, to: 20, color: 'rgba(231,111,81,0.12)' }]
             },
             depletion_pct: {
                 title: 'Water Used Trend',
@@ -1420,7 +1424,7 @@ const App = {
                 value: (h) => (h.fractionDepleted ?? 0) * 100,
                 domain: () => ({ min: 0, max: 100 }),
                 status: (v) => (v > 70 ? 'critical' : (v > 40 ? 'warning' : 'healthy')),
-                bands: [{ from: 0, to: 40, color: 'rgba(122,166,122,0.10)' }, { from: 40, to: 70, color: 'rgba(216,167,89,0.12)' }, { from: 70, to: 100, color: 'rgba(208,96,96,0.10)' }]
+                bands: [{ from: 0, to: 40, color: 'rgba(95,141,78,0.10)' }, { from: 40, to: 70, color: 'rgba(244,162,97,0.12)' }, { from: 70, to: 100, color: 'rgba(231,111,81,0.12)' }]
             },
             temp_c: {
                 title: 'Soil Temperature Trend',
@@ -1434,106 +1438,171 @@ const App = {
 
         const metricKey = this.state.chartMetric || 'theta_pct';
         const metric = metricDefs[metricKey] || metricDefs.theta_pct;
-        const values = history.map(metric.value).filter((v) => Number.isFinite(v));
-        if (values.length < 2) return;
-        const range = metric.domain(values);
+        const filtered = history.filter((h) => h.timestamp >= (nowTs - rangeSeconds));
+        const series = filtered.length >= 2 ? filtered : history;
+        const points = series.map((h) => ({ timestamp: h.timestamp, value: metric.value(h) })).filter((p) => Number.isFinite(p.value));
+        if (points.length < 2) return;
 
         const chartTitle = document.getElementById('chart-title');
-        if (chartTitle) chartTitle.textContent = metric.title;
+        if (chartTitle) chartTitle.textContent = `${metric.title} (${this.state.chartRangeHours || 12}h)`;
 
-        const tMin = history[0].timestamp;
-        const tMax = history[history.length - 1].timestamp;
+        // Stable temperature shortcut
+        if (metricKey === 'temp_c') {
+            const max = Math.max(...points.map((p) => p.value));
+            const min = Math.min(...points.map((p) => p.value));
+            if ((max - min) <= 0.8) {
+                container.innerHTML = `<div style="padding:18px;font-size:0.95rem;color:#4f5f56;">Temperature is stable (${min.toFixed(1)}-${max.toFixed(1)}°C). No trend graph needed right now.</div>`;
+                const trendElStable = document.getElementById('chart-trend');
+                if (trendElStable) trendElStable.textContent = 'Trend: → Stable temperature';
+                this.setSafeText('chart-event-1', '• Temperature stayed within a tight range today.');
+                this.setSafeText('chart-event-2', '• No thermal stress event detected.');
+                this.setSafeText('chart-event-3', '• Graph hidden to reduce noise.');
+                return;
+            }
+        }
+
+        const values = points.map((p) => p.value);
+        const range = metric.domain(values);
+        const tMin = points[0].timestamp;
+        const tMax = points[points.length - 1].timestamp;
         const getX = (t) => pad + ((t - tMin) / (tMax - tMin + 1)) * (W - 2 * pad);
         const getY = (v) => H - pad - ((v - range.min) / (range.max - range.min || 1)) * (H - 2 * pad);
 
-        const points = history.map((h) => ({ timestamp: h.timestamp, value: metric.value(h) }));
-        let area = `M ${getX(points[0].timestamp)} ${H - pad} L ${getX(points[0].timestamp)} ${getY(points[0].value)}`;
-        let segments = '';
-        let markers = '';
+        const stripEl = document.getElementById('chart-strip');
+        const trendEl = document.getElementById('chart-trend');
         let legendBands = '';
-
         metric.bands.forEach((band) => {
             const yTop = getY(band.to === null ? range.max : band.to);
             const yBottom = getY(band.from);
             legendBands += `<rect x="${pad}" y="${yTop}" width="${W - 2 * pad}" height="${Math.max(0, yBottom - yTop)}" fill="${band.color}" />`;
         });
 
-        const latest = points[points.length - 1];
-        const prev = points[points.length - 2];
-        const lastDelta = latest.value - prev.value;
-        const trendEl = document.getElementById('chart-trend');
-        if (trendEl) {
-            let trendLabel = 'Trend: → Stable';
-            const stepThreshold = metric.unit === '%' ? 1 : 2;
-            if (lastDelta > stepThreshold * 0.3) trendLabel = 'Trend: ↗ Increasing';
-            if (lastDelta < -stepThreshold * 0.3) trendLabel = 'Trend: ↘ Decreasing';
-            const latestStatus = metric.status(latest.value);
-            const statusText = latestStatus === 'critical' ? 'CRITICAL - needs action' : (latestStatus === 'warning' ? 'WATCH - check soon' : 'HEALTHY');
+        const renderFieldAverage = () => {
+            const latest = points[points.length - 1];
+            const prev = points[points.length - 2];
+            const lastDelta = latest.value - prev.value;
+            let area = `M ${getX(points[0].timestamp)} ${H - pad} L ${getX(points[0].timestamp)} ${getY(points[0].value)}`;
+            let segments = '';
+            let markers = '';
+
+            for (let i = 1; i < points.length; i++) {
+                const p0 = points[i - 1];
+                const p1 = points[i];
+                const x0 = getX(p0.timestamp);
+                const y0 = getY(p0.value);
+                const x1 = getX(p1.timestamp);
+                const y1 = getY(p1.value);
+                const status = metric.status(p1.value);
+                const stroke = status === 'critical' ? '#E76F51' : (status === 'warning' ? '#F4A261' : '#5F8D4E');
+                segments += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="${stroke}" stroke-width="3" stroke-linecap="round" />`;
+                area += ` L ${x1} ${y1}`;
+                if ((p1.value - p0.value) > (metric.unit === '%' ? 2.0 : 4.0)) {
+                    markers += `<line x1="${x1}" y1="${pad}" x2="${x1}" y2="${H - pad}" stroke="#7aa2c8" stroke-width="1" stroke-dasharray="3" />`;
+                }
+            }
+            area += ` L ${getX(latest.timestamp)} ${H - pad} Z`;
+
+            const mid = points[Math.floor(points.length / 2)];
+            const startLabel = new Date(points[0].timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const midLabel = new Date(mid.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const endLabel = new Date(latest.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const yesterdayIdx = Math.max(0, points.length - 96);
             const vsYesterday = latest.value - points[yesterdayIdx].value;
             const projected = latest.value + (lastDelta * 8);
-            const projectionText = Number.isFinite(projected) ? ` · Projected +2h: ${projected.toFixed(1)}${metric.unit}` : '';
-            trendEl.textContent = `${trendLabel} · Currently: ${latest.value.toFixed(1)}${metric.unit} (${statusText}) · vs yesterday: ${vsYesterday >= 0 ? '+' : ''}${vsYesterday.toFixed(1)}${metric.unit}${projectionText}`;
-        }
+            const latestStatus = metric.status(latest.value);
+            const statusText = latestStatus === 'critical' ? 'CRITICAL - needs water soon' : (latestStatus === 'warning' ? 'WATCH - monitor' : 'HEALTHY');
 
-        for (let i = 1; i < points.length; i++) {
-            const p0 = points[i - 1];
-            const p1 = points[i];
-            const x0 = getX(p0.timestamp);
-            const y0 = getY(p0.value);
-            const x1 = getX(p1.timestamp);
-            const y1 = getY(p1.value);
-            const status = metric.status(p1.value);
-            const stroke = status === 'critical' ? '#E76F51' : (status === 'warning' ? '#F4A261' : '#5F8D4E');
-            segments += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="${stroke}" stroke-width="3" stroke-linecap="round" />`;
-            area += ` L ${x1} ${y1}`;
-            if ((p1.value - p0.value) > (metric.unit === '%' ? 2.0 : 4.0)) {
-                markers += `
-                    <line x1="${x1}" y1="${pad}" x2="${x1}" y2="${H - pad}" stroke="#7aa2c8" stroke-width="1" stroke-dasharray="3" />
-                    <text x="${x1 + 4}" y="${pad + 12}" font-size="10" fill="#5d7f9b">🌧</text>
-                `;
+            if (trendEl) {
+                let trendLabel = 'Trend: → Stable';
+                if (lastDelta > 0.3) trendLabel = 'Trend: ↗ Increasing';
+                if (lastDelta < -0.3) trendLabel = 'Trend: ↘ Dropping quickly';
+                trendEl.textContent = `${trendLabel} · Currently ${latest.value.toFixed(1)}${metric.unit} (${statusText}) · vs Yesterday ${vsYesterday >= 0 ? '+' : ''}${vsYesterday.toFixed(1)}${metric.unit} · Forecast +2h ${projected.toFixed(1)}${metric.unit}`;
             }
-        }
-        area += ` L ${getX(latest.timestamp)} ${H - pad} Z`;
 
-        const mid = points[Math.floor(points.length / 2)];
-        const startLabel = new Date(points[0].timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const midLabel = new Date(mid.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const endLabel = new Date(latest.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const tipLabel = `${new Date(latest.timestamp * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}: ${latest.value.toFixed(1)}${metric.unit}`;
-
-        container.innerHTML = `
-            <svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-                <defs>
-                    <linearGradient id="lineFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stop-color="#7aa67a" stop-opacity="0.45" />
-                        <stop offset="100%" stop-color="#7aa67a" stop-opacity="0.02" />
-                    </linearGradient>
-                </defs>
-                ${legendBands}
-                ${markers}
-                <path d="${area}" fill="url(#lineFill)" stroke="none" />
-                ${segments}
-                <circle cx="${getX(latest.timestamp)}" cy="${getY(latest.value)}" r="4" fill="#5f8f67">
-                    <title>${tipLabel}</title>
-                </circle>
-                <line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="#b7c4be" />
-                <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H - pad}" stroke="#b7c4be" />
-                <text x="${pad}" y="${H - 5}" font-size="10" fill="#68786f">${startLabel}</text>
-                <text x="${W / 2}" y="${H - 5}" text-anchor="middle" font-size="10" fill="#68786f">${midLabel}</text>
-                <text x="${W - pad}" y="${H - 5}" text-anchor="end" font-size="10" fill="#68786f">${endLabel}</text>
-            </svg>
-        `;
-
-        const stripEl = document.getElementById('chart-strip');
-        if (stripEl) {
-            const step = Math.max(1, Math.floor(points.length / 12));
-            let dots = '';
-            for (let i = 0; i < points.length; i += step) {
-                const st = metric.status(points[i].value);
-                dots += `<span class="strip-dot ${st}" title="${new Date(points[i].timestamp * 1000).toLocaleTimeString()}"></span>`;
+            if (stripEl) {
+                const step = Math.max(1, Math.floor(points.length / 12));
+                let dots = '';
+                for (let i = 0; i < points.length; i += step) {
+                    dots += `<span class="strip-dot ${metric.status(points[i].value)}"></span>`;
+                }
+                stripEl.innerHTML = `${dots}<span class="strip-time">${startLabel} · ${midLabel} · ${endLabel}</span>`;
             }
-            stripEl.innerHTML = `${dots}<span class="strip-time">${startLabel} · ${midLabel} · ${endLabel}</span>`;
+
+            this.setSafeText('chart-event-1', `• Currently: ${latest.value.toFixed(1)}${metric.unit} (${statusText.toLowerCase()})`);
+            this.setSafeText('chart-event-2', `• Peak: ${Math.max(...values).toFixed(1)}${metric.unit} · Low: ${Math.min(...values).toFixed(1)}${metric.unit}`);
+            this.setSafeText('chart-event-3', `• Forecast: ${projected.toFixed(1)}${metric.unit} in ~2h`);
+
+            container.innerHTML = `
+                <svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+                    <defs><linearGradient id="lineFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7aa67a" stop-opacity="0.45" /><stop offset="100%" stop-color="#7aa67a" stop-opacity="0.02" /></linearGradient></defs>
+                    ${legendBands}
+                    ${markers}
+                    <path d="${area}" fill="url(#lineFill)" stroke="none" />
+                    ${segments}
+                    <circle cx="${getX(latest.timestamp)}" cy="${getY(latest.value)}" r="4" fill="#5f8f67"></circle>
+                    <line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="#b7c4be" />
+                    <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H - pad}" stroke="#b7c4be" />
+                    <text x="${pad}" y="${H - 5}" font-size="10" fill="#68786f">${startLabel}</text>
+                    <text x="${W / 2}" y="${H - 5}" text-anchor="middle" font-size="10" fill="#68786f">${midLabel}</text>
+                    <text x="${W - pad}" y="${H - 5}" text-anchor="end" font-size="10" fill="#68786f">${endLabel}</text>
+                </svg>
+            `;
+        };
+
+        const renderCompareZones = () => {
+            const zoneEntries = Object.entries(MockAPI.getAllZones())
+                .filter(([_, z]) => z.latest)
+                .slice(0, 6);
+
+            const zonesSeries = zoneEntries.map(([zoneId, z]) => {
+                const arr = (z.history || []).filter((h) => h.timestamp >= (nowTs - rangeSeconds));
+                const source = arr.length >= 2 ? arr : (z.history || []);
+                return {
+                    zoneId,
+                    points: source.map((h) => ({ timestamp: h.timestamp, value: metric.value(h) })).filter((p) => Number.isFinite(p.value))
+                };
+            }).filter((z) => z.points.length >= 2);
+
+            if (zonesSeries.length === 0) return renderFieldAverage();
+            const globalMinT = Math.min(...zonesSeries.map((z) => z.points[0].timestamp));
+            const globalMaxT = Math.max(...zonesSeries.map((z) => z.points[z.points.length - 1].timestamp));
+            const getXz = (t) => pad + ((t - globalMinT) / (globalMaxT - globalMinT + 1)) * (W - 2 * pad);
+            const getYz = (v) => H - pad - ((v - range.min) / (range.max - range.min || 1)) * (H - 2 * pad);
+            const palette = ['#5F8D4E', '#8BA888', '#87CEEB', '#F4A261', '#E76F51', '#7A9E9F'];
+
+            let lines = '';
+            let labels = '';
+            zonesSeries.forEach((zone, idx) => {
+                let d = `M ${getXz(zone.points[0].timestamp)} ${getYz(zone.points[0].value)}`;
+                for (let i = 1; i < zone.points.length; i++) {
+                    d += ` L ${getXz(zone.points[i].timestamp)} ${getYz(zone.points[i].value)}`;
+                }
+                const color = palette[idx % palette.length];
+                lines += `<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="${idx % 2 === 0 ? '0' : '4 3'}"/>`;
+                labels += `<text x="${W - pad - 4}" y="${getYz(zone.points[zone.points.length - 1].value) - 2}" text-anchor="end" font-size="10" fill="${color}">${ZONE_LABELS[zone.zoneId] || zone.zoneId}</text>`;
+            });
+
+            if (trendEl) trendEl.textContent = `Compare Zones: showing ${zonesSeries.length} sections over ${this.state.chartRangeHours}h`;
+            if (stripEl) stripEl.innerHTML = '<span class="strip-time">Zone comparison view (dashed = lower-priority trace)</span>';
+            this.setSafeText('chart-event-1', '• Compare zones to spot underperforming sections.');
+            this.setSafeText('chart-event-2', '• Focus on lines drifting toward warning/critical bands.');
+            this.setSafeText('chart-event-3', '• Tap Field Map for section-level actions.');
+
+            container.innerHTML = `
+                <svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+                    ${legendBands}
+                    ${lines}
+                    ${labels}
+                    <line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="#b7c4be" />
+                    <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H - pad}" stroke="#b7c4be" />
+                </svg>
+            `;
+        };
+
+        if ((this.state.chartView || 'field_avg') === 'compare_zones') {
+            renderCompareZones();
+        } else {
+            renderFieldAverage();
         }
     },
 
@@ -1933,11 +2002,29 @@ const App = {
             });
         }
 
-        document.querySelectorAll('.chart-pill').forEach((pill) => {
+        document.querySelectorAll('#chart-metric-pills .chart-pill').forEach((pill) => {
             pill.classList.toggle('active', pill.dataset.metric === this.state.chartMetric);
             pill.addEventListener('click', () => {
                 this.state.chartMetric = pill.dataset.metric;
-                document.querySelectorAll('.chart-pill').forEach((el) => el.classList.remove('active'));
+                document.querySelectorAll('#chart-metric-pills .chart-pill').forEach((el) => el.classList.remove('active'));
+                pill.classList.add('active');
+                this.renderChart();
+            });
+        });
+        document.querySelectorAll('#chart-view-pills .chart-pill').forEach((pill) => {
+            pill.classList.toggle('active', pill.dataset.chartView === this.state.chartView);
+            pill.addEventListener('click', () => {
+                this.state.chartView = pill.dataset.chartView;
+                document.querySelectorAll('#chart-view-pills .chart-pill').forEach((el) => el.classList.remove('active'));
+                pill.classList.add('active');
+                this.renderChart();
+            });
+        });
+        document.querySelectorAll('#chart-range-pills .chart-pill').forEach((pill) => {
+            pill.classList.toggle('active', Number(pill.dataset.hours) === this.state.chartRangeHours);
+            pill.addEventListener('click', () => {
+                this.state.chartRangeHours = Number(pill.dataset.hours);
+                document.querySelectorAll('#chart-range-pills .chart-pill').forEach((el) => el.classList.remove('active'));
                 pill.classList.add('active');
                 this.renderChart();
             });

@@ -140,6 +140,18 @@
                         <button class="chart-pill" data-metric="temp_c">Temperature</button>
                     </div>
                 </div>
+                <div class="chart-controls">
+                    <div id="chart-view-pills" class="chart-pills">
+                        <button class="chart-pill active" data-chart-view="field_avg">Field Average</button>
+                        <button class="chart-pill" data-chart-view="compare_zones">Compare Zones</button>
+                    </div>
+                    <div id="chart-range-pills" class="chart-pills">
+                        <button class="chart-pill active" data-hours="12">12H</button>
+                        <button class="chart-pill" data-hours="24">24H</button>
+                        <button class="chart-pill" data-hours="168">7D</button>
+                        <button class="chart-pill" data-hours="720">30D</button>
+                    </div>
+                </div>
                 <p id="chart-trend" style="margin:0 0 10px; color:var(--neutral-600); font-size:0.9rem;">Trend: --</p>
                 <div id="chart-strip" class="chart-strip">--</div>
                 <div class="chart-container" id="tier3-chart">
@@ -149,6 +161,11 @@
                     <span class="status-badge healthy">🟢 Healthy</span>
                     <span class="status-badge warning">🟡 Watch</span>
                     <span class="status-badge critical">🔴 Action Needed</span>
+                </div>
+                <div class="chart-insights">
+                    <p id="chart-event-1">• --</p>
+                    <p id="chart-event-2">• --</p>
+                    <p id="chart-event-3">• --</p>
                 </div>
             </div>
 
