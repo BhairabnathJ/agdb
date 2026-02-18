@@ -737,6 +737,23 @@ body {
     margin-bottom: var(--space-5);
 }
 
+.zone-chart-wrap {
+    margin-top: var(--space-4);
+    padding: var(--space-4);
+    border: 1px solid var(--neutral-200);
+    border-radius: var(--radius-sm);
+    background: #fff;
+}
+
+.zone-mini-chart {
+    height: 180px;
+    min-height: 180px;
+    border: 1px solid var(--neutral-200);
+    border-radius: 10px;
+    background: linear-gradient(180deg, #f9fdfb 0%, #f3faf6 100%);
+    padding: 8px;
+}
+
 .action-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

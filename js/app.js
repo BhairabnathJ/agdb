@@ -1292,9 +1292,22 @@ const App = {
         if (moistureEl) moistureEl.textContent = `${moistureState.emoji} ${moistureState.status}`;
         if (tempEl) tempEl.textContent = `${s.temp_c.toFixed(1)}°C`;
         const allZones = Object.values(MockAPI.getAllZones ? MockAPI.getAllZones() : {});
+        const sampledZones = allZones.filter((z) => z.latest).length;
         const healthyZones = allZones.filter((z) => z.latest && z.latest.urgency === 'low').length;
         if (zonesEl) zonesEl.textContent = `${Object.keys(MockAPI.zones || {}).length} sensors`;
-        if (zoneSummaryEl) zoneSummaryEl.textContent = `${healthyZones} of ${allZones.length} zones healthy`;
+        if (zoneSummaryEl) {
+            if (sampledZones === 0) {
+                zoneSummaryEl.textContent = `Collecting data from ${allZones.length} zones`;
+            } else {
+                zoneSummaryEl.textContent = `${healthyZones} of ${sampledZones} reporting zones healthy`;
+            }
+        }
+
+        if (sampledZones > 0 && healthyZones === 0) {
+            statusIcon.className = 'status-circle-large warning';
+            msgEl.textContent = 'Your field has no healthy zones right now.';
+            instrEl.textContent = 'Open Field Details to see which zones need attention first.';
+        }
     },
 
     renderTier2: function () {
@@ -1440,10 +1453,35 @@ const App = {
 
         const metricKey = this.state.chartMetric || 'theta_pct';
         const metric = metricDefs[metricKey] || metricDefs.theta_pct;
-        const filtered = history.filter((h) => h.timestamp >= (nowTs - rangeSeconds));
-        const series = filtered.length >= 2 ? filtered : history;
-        const points = series.map((h) => ({ timestamp: h.timestamp, value: metric.value(h) })).filter((p) => Number.isFinite(p.value));
-        if (points.length < 2) return;
+        const rangeStartTs = nowTs - rangeSeconds;
+        const filtered = history.filter((h) => h.timestamp >= rangeStartTs && h.timestamp <= nowTs);
+        if (filtered.length < 2) {
+            container.innerHTML = `<div style="padding:18px;font-size:0.95rem;color:#4f5f56;">Not enough data for this time range yet.</div>`;
+            this.setSafeText('chart-event-1', '• Keep the app running to build trend history.');
+            this.setSafeText('chart-event-2', '• Try a longer range if available.');
+            this.setSafeText('chart-event-3', '• This chart uses field-average values only.');
+            return;
+        }
+
+        const bucketSec = this.state.chartRangeHours <= 24 ? 1800 : (this.state.chartRangeHours <= 168 ? 10800 : 43200);
+        const buckets = new Map();
+        filtered.forEach((h) => {
+            const bucketTs = Math.floor(h.timestamp / bucketSec) * bucketSec;
+            const value = metric.value(h);
+            if (!Number.isFinite(value)) return;
+            if (!buckets.has(bucketTs)) buckets.set(bucketTs, { sum: 0, count: 0 });
+            const entry = buckets.get(bucketTs);
+            entry.sum += value;
+            entry.count += 1;
+        });
+
+        const points = Array.from(buckets.entries())
+            .sort((a, b) => a[0] - b[0])
+            .map(([timestamp, data]) => ({ timestamp, value: data.sum / Math.max(1, data.count) }));
+        if (points.length < 2) {
+            container.innerHTML = `<div style="padding:18px;font-size:0.95rem;color:#4f5f56;">Need more samples to draw a smooth average trend.</div>`;
+            return;
+        }
 
         const chartTitle = document.getElementById('chart-title');
         if (chartTitle) chartTitle.textContent = `${metric.title} (${this.state.chartRangeHours || 24}h)`;
@@ -1465,8 +1503,8 @@ const App = {
 
         const values = points.map((p) => p.value);
         const range = metric.domain(values);
-        const tMin = points[0].timestamp;
-        const tMax = points[points.length - 1].timestamp;
+        const tMin = rangeStartTs;
+        const tMax = nowTs;
         const getX = (t) => pad + ((t - tMin) / (tMax - tMin + 1)) * (W - 2 * pad);
         const getY = (v) => H - pad - ((v - range.min) / (range.max - range.min || 1)) * (H - 2 * pad);
 
@@ -1503,10 +1541,16 @@ const App = {
         }
         area += ` L ${getX(latest.timestamp)} ${H - pad} Z`;
 
-        const mid = points[Math.floor(points.length / 2)];
-        const startLabel = new Date(points[0].timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const midLabel = new Date(mid.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const endLabel = new Date(latest.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const midTs = Math.floor((tMin + tMax) / 2);
+        const fmtLabel = (ts) => {
+            if ((this.state.chartRangeHours || 24) > 24) {
+                return new Date(ts * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' });
+            }
+            return new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        };
+        const startLabel = fmtLabel(tMin);
+        const midLabel = fmtLabel(midTs);
+        const endLabel = fmtLabel(tMax);
         const yesterdayIdx = Math.max(0, points.length - 96);
         const vsYesterday = latest.value - points[yesterdayIdx].value;
         const projected = latest.value + (lastDelta * 8);
@@ -1531,7 +1575,7 @@ const App = {
 
         this.setSafeText('chart-event-1', `• Currently: ${latest.value.toFixed(1)}${metric.unit} (${statusText.toLowerCase()})`);
         this.setSafeText('chart-event-2', `• Peak: ${Math.max(...values).toFixed(1)}${metric.unit} · Low: ${Math.min(...values).toFixed(1)}${metric.unit}`);
-        this.setSafeText('chart-event-3', `• Forecast: ${projected.toFixed(1)}${metric.unit} in ~2h`);
+        this.setSafeText('chart-event-3', `• Forecast: ${projected.toFixed(1)}${metric.unit} in ~2h · field average`);
 
         container.innerHTML = `
             <svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
@@ -1679,8 +1723,63 @@ const App = {
         const regimeEl = document.getElementById('zone-regime');
         if (regimeEl) regimeEl.textContent = s.regime || '--';
 
+        this.renderZoneChart(this.state.selectedZone);
+
         // Only log on initial selection, not every update
         // Logger is called from selectZone() instead
+    },
+
+    renderZoneChart: function (zoneId) {
+        const container = document.getElementById('zone-chart');
+        const summary = document.getElementById('zone-chart-summary');
+        if (!container || !zoneId) return;
+
+        const zoneHistory = (MockAPI.zones[zoneId]?.history || []).slice(-180);
+        if (zoneHistory.length < 2) {
+            container.innerHTML = `<div style="padding:14px;color:#68786f;font-size:0.9rem;">Waiting for more sensor data...</div>`;
+            if (summary) summary.textContent = 'Trend will appear after a few readings.';
+            return;
+        }
+
+        const W = container.clientWidth || 320;
+        const H = container.clientHeight || 180;
+        const pad = 24;
+        const points = zoneHistory.map((h) => ({ timestamp: h.timestamp, value: (h.theta || 0) * 100 }));
+        const values = points.map((p) => p.value);
+        const minV = Math.max(0, Math.floor(Math.min(...values) - 3));
+        const maxV = Math.min(60, Math.ceil(Math.max(...values) + 3));
+        const tMin = points[0].timestamp;
+        const tMax = points[points.length - 1].timestamp;
+        const getX = (t) => pad + ((t - tMin) / (tMax - tMin + 1)) * (W - 2 * pad);
+        const getY = (v) => H - pad - ((v - minV) / (maxV - minV || 1)) * (H - 2 * pad);
+
+        let area = `M ${getX(points[0].timestamp)} ${H - pad} L ${getX(points[0].timestamp)} ${getY(points[0].value)}`;
+        let path = `M ${getX(points[0].timestamp)} ${getY(points[0].value)}`;
+        for (let i = 1; i < points.length; i++) {
+            const x = getX(points[i].timestamp);
+            const y = getY(points[i].value);
+            path += ` L ${x} ${y}`;
+            area += ` L ${x} ${y}`;
+        }
+        area += ` L ${getX(points[points.length - 1].timestamp)} ${H - pad} Z`;
+
+        const latest = points[points.length - 1];
+        const prev = points[points.length - 2];
+        const trend = latest.value - prev.value;
+        const trendLabel = trend > 0.2 ? 'rising' : (trend < -0.2 ? 'drying' : 'stable');
+        const color = latest.value < 15 ? '#E76F51' : (latest.value < 20 ? '#F4A261' : '#5F8D4E');
+
+        container.innerHTML = `
+            <svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+                <defs><linearGradient id="zoneFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity="0.32" /><stop offset="100%" stop-color="${color}" stop-opacity="0.03" /></linearGradient></defs>
+                <path d="${area}" fill="url(#zoneFill)" />
+                <path d="${path}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" />
+                <circle cx="${getX(latest.timestamp)}" cy="${getY(latest.value)}" r="3.5" fill="${color}" />
+                <line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="#b7c4be" />
+                <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H - pad}" stroke="#b7c4be" />
+            </svg>
+        `;
+        if (summary) summary.textContent = `Current ${latest.value.toFixed(1)}% moisture · Trend: ${trendLabel}`;
     },
 
     selectZone: function (zoneId) {
