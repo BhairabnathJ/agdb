@@ -96,36 +96,49 @@
             <!-- Current Readings Grid (Updated for VWC/Psi) -->
             <div class="metrics-grid-dense">
                 <div class="metric-cell healthy" id="t3-moist-cell">
-                    <label>VWC</label> <!-- Changed from Moist -->
+                    <label>Soil Moisture</label>
                     <span id="t3-moist">--%</span>
                 </div>
                 <div class="metric-cell" id="t3-soil-temp-cell">
-                    <label>S.Temp</label>
+                    <label>Soil Temperature</label>
                     <span id="t3-soil-temp">--°C</span>
                 </div>
                 <div class="metric-cell">
-                    <label>Raw ADC</label> <!-- Changed from A.Temp/EC -->
-                    <span id="t3-ec">--</span>
+                    <label>Sensor Confidence</label>
+                    <span id="t3-confidence">--%</span>
                 </div>
                 <div class="metric-cell">
-                    <label>Potentl</label> <!-- Psi -->
-                    <span id="t3-vpd">--kPa</span>
+                    <label>Water Pressure</label>
+                    <span id="t3-vpd">--</span>
                 </div>
                 <div class="metric-cell">
-                    <label>Avail H2O</label> <!-- AW_mm -->
-                    <span id="t3-leaf">--mm</span>
+                    <label>Available Water</label>
+                    <span id="t3-leaf">--</span>
                 </div>
                 <div class="metric-cell">
-                    <label>Depletion</label>
-                    <span id="t3-depletion">--%</span>
+                    <label>Water Used</label>
+                    <span id="t3-depletion">--</span>
                 </div>
             </div>
 
             <!-- Chart -->
             <div class="chart-wrapper">
-                <h3 class="font-h3">VWC History</h3>
+                <h3 class="font-h3">Moisture Trend</h3>
                 <div class="chart-container" id="tier3-chart">
                     <!-- SVG Chart -->
+                </div>
+            </div>
+
+            <div class="metrics-grid-dense">
+                <div class="metric-cell" id="decision-panel">
+                    <label>Watering Decision</label>
+                    <span id="decision-need">Should I water today? --</span>
+                    <small id="decision-next">Next watering window: --</small>
+                </div>
+                <div class="metric-cell" id="health-panel">
+                    <label>Field Health</label>
+                    <span id="health-status">Overall status: --</span>
+                    <small id="health-zone">Zones needing attention: --</small>
                 </div>
             </div>
 

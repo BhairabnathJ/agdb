@@ -1222,17 +1222,16 @@ const App = {
         // Update title based on status
         if (titleEl) {
             if (s.urgency === 'high') {
-                titleEl.textContent = I18n?.t('why_title_irrigate') || 'Why do I need to water?';
+                titleEl.textContent = 'Watering needs your attention today';
             } else if (s.urgency === 'medium') {
-                titleEl.textContent = I18n?.t('why_title_check') || 'Why should I check the field?';
+                titleEl.textContent = 'Field check recommended soon';
             } else {
-                titleEl.textContent = I18n?.t('why_title_good') || 'Why is everything good?';
+                titleEl.textContent = 'Why your field is in good shape';
             }
         }
 
-        // VWC Status
         const li1 = document.createElement('li');
-        li1.innerHTML = `<strong>VWC is ${(s.theta * 100).toFixed(1)}%</strong> (FC: ${(s.theta_fc * 100).toFixed(0)}%)`;
+        li1.innerHTML = `<strong>Soil moisture is ${(s.theta * 100).toFixed(1)}%</strong> (ideal around ${(s.theta_fc * 100).toFixed(0)}%).`;
         list.appendChild(li1);
 
         // Yield Risk
@@ -1243,23 +1242,21 @@ const App = {
             const stageMeta = THRESHOLDS_STORE.getCropStage(this.state.settings.crop, this.state.settings.planting_ts);
             const cropLabel = cropMeta?.display_name || this.state.settings.crop || "Unknown";
             const stageLabel = stageMeta?.name || "current stage";
-            liYield.innerHTML = `⚠️ <strong>Yield Risk: Elevated for ${cropLabel} (${stageLabel})</strong>`;
+            liYield.innerHTML = `⚠️ <strong>Crop stress risk is elevated for ${cropLabel} (${stageLabel} stage).</strong>`;
             list.appendChild(liYield);
         }
 
         // Crop Age
         const liStage = document.createElement('li');
-        liStage.innerHTML = `Crop Age: <strong>${this.getDaysAfterPlanting()} days</strong>`;
+        liStage.innerHTML = `Crop age: <strong>${this.getDaysAfterPlanting()} days after planting</strong>.`;
         list.appendChild(liStage);
 
-        // Regime
         const li2 = document.createElement('li');
-        li2.textContent = `Regime: ${s.regime?.toUpperCase() || 'UNKNOWN'}`;
+        li2.textContent = `Water trend: ${s.regime ? s.regime.toLowerCase() : 'still learning'} `;
         list.appendChild(li2);
 
-        // Confidence
         const liConf = document.createElement('li');
-        liConf.innerHTML = `Calibration Confidence: <strong>${(s.confidence * 100).toFixed(0)}%</strong>`;
+        liConf.innerHTML = `Model confidence: <strong>${(s.confidence * 100).toFixed(0)}%</strong>.`;
         list.appendChild(liConf);
     },
 
@@ -1268,10 +1265,10 @@ const App = {
 
         this.setSafeText('t3-moist', (s.theta * 100).toFixed(1) + '%');
         this.setSafeText('t3-soil-temp', s.temp_c.toFixed(1) + '°C');
-        this.setSafeText('t3-vpd', s.psi_kPa ? s.psi_kPa.toFixed(1) + ' kPa' : '--');
-        this.setSafeText('t3-ec', s.raw || '--');
-        this.setSafeText('t3-leaf', s.AW_mm ? s.AW_mm.toFixed(1) + ' mm' : '--');
-        this.setSafeText('t3-depletion', s.fractionDepleted ? (s.fractionDepleted * 100).toFixed(0) + '%' : '--');
+        this.setSafeText('t3-vpd', s.psi_kPa ? `${s.psi_kPa.toFixed(1)} kPa (easy plant access)` : '--');
+        this.setSafeText('t3-confidence', `${Math.round((s.confidence || 0) * 100)}%`);
+        this.setSafeText('t3-leaf', s.AW_mm ? `${s.AW_mm.toFixed(1)} mm available` : '--');
+        this.setSafeText('t3-depletion', s.fractionDepleted ? `${(s.fractionDepleted * 100).toFixed(0)}% used` : '--');
 
         const mCell = document.getElementById('t3-moist-cell');
         if (mCell) {
@@ -1280,6 +1277,20 @@ const App = {
             else if (s.urgency === 'medium') mCell.classList.add('warning');
             else mCell.classList.add('healthy');
         }
+
+        const shouldWater = s.urgency === 'high' ? 'Yes' : 'No';
+        this.setSafeText('decision-need', `Should I water today? ${shouldWater}`);
+        this.setSafeText('decision-next', s.urgency === 'high'
+            ? 'Next watering window: now'
+            : 'Next watering window: likely in 1-2 days');
+
+        const zones = MockAPI.getAllZones();
+        let needsAttention = 0;
+        Object.values(zones).forEach((z) => {
+            if (z.latest && (z.latest.urgency === 'high' || z.latest.urgency === 'medium')) needsAttention++;
+        });
+        this.setSafeText('health-status', `Overall status: ${s.urgency === 'high' ? 'Action needed' : (s.urgency === 'medium' ? 'Watch' : 'Healthy')}`);
+        this.setSafeText('health-zone', `Zones needing attention: ${needsAttention}`);
 
         this.renderChart();
     },
