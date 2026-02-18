@@ -876,6 +876,7 @@ const App = {
         currentSample: null,
         selectedZone: null,  // No zone selected by default
         problemFirst: false,
+        mapZoom: 1,
         history: [],
         settings: {
             tempUnit: 'c',
@@ -919,6 +920,7 @@ const App = {
         MockAPI.seed();
 
         this.setupListeners();
+        this.bindMobileGestures();
         this.renderZoneGrid();
         this.syncBottomNav('home');
         this.updateData();
@@ -1636,6 +1638,97 @@ const App = {
         const simCountdown = document.getElementById('sim-countdown');
         if (simCountdown) simCountdown.style.display = 'none';
         Logger.log('SIMULATION', 'Simulation state reset');
+    },
+
+    bindMobileGestures: function () {
+        let startX = 0;
+        let startY = 0;
+        let pullTriggered = false;
+        let lastPinchDistance = null;
+
+        const zoneGrid = document.getElementById('zone-grid');
+        if (zoneGrid) {
+            zoneGrid.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    startX = e.touches[0].clientX;
+                    startY = e.touches[0].clientY;
+                }
+                if (e.touches.length === 2) {
+                    const [a, b] = e.touches;
+                    lastPinchDistance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+                }
+            }, { passive: true });
+
+            zoneGrid.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 2 && lastPinchDistance) {
+                    const [a, b] = e.touches;
+                    const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+                    const ratio = dist / lastPinchDistance;
+                    this.state.mapZoom = Math.min(1.35, Math.max(0.9, this.state.mapZoom * ratio));
+                    zoneGrid.style.transform = `scale(${this.state.mapZoom.toFixed(2)})`;
+                    zoneGrid.style.transformOrigin = 'center top';
+                    lastPinchDistance = dist;
+                }
+            }, { passive: true });
+
+            zoneGrid.addEventListener('touchend', (e) => {
+                if (e.changedTouches.length === 1) {
+                    const endX = e.changedTouches[0].clientX;
+                    const endY = e.changedTouches[0].clientY;
+                    const dx = endX - startX;
+                    const dy = endY - startY;
+                    if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy)) {
+                        this.cycleZone(dx < 0 ? 1 : -1);
+                    }
+                }
+                if (e.touches.length < 2) lastPinchDistance = null;
+            });
+        }
+
+        document.addEventListener('touchstart', (e) => {
+            if (window.scrollY === 0 && e.touches.length === 1) {
+                startY = e.touches[0].clientY;
+                pullTriggered = false;
+            }
+        }, { passive: true });
+
+        document.addEventListener('touchmove', (e) => {
+            if (window.scrollY === 0 && e.touches.length === 1) {
+                const deltaY = e.touches[0].clientY - startY;
+                if (deltaY > 90 && !pullTriggered) {
+                    pullTriggered = true;
+                    this.updateData();
+                    this.refreshSensorData();
+                    Logger.log('UI', 'Pull-to-refresh triggered');
+                }
+            }
+        }, { passive: true });
+
+        document.querySelectorAll('.metric-cell').forEach((cell) => {
+            let timer = null;
+            cell.addEventListener('touchstart', () => {
+                timer = setTimeout(() => {
+                    const label = cell.querySelector('label')?.textContent || 'Metric';
+                    alert(`${label}: This value summarizes field water status for quick decisions.`);
+                }, 650);
+            }, { passive: true });
+            cell.addEventListener('touchend', () => {
+                if (timer) clearTimeout(timer);
+                timer = null;
+            });
+            cell.addEventListener('touchcancel', () => {
+                if (timer) clearTimeout(timer);
+                timer = null;
+            });
+        });
+    },
+
+    cycleZone: function (direction) {
+        const activeIds = ZONE_CONFIG.sensors.filter((s) => s.active).map((s) => s.id);
+        if (activeIds.length === 0) return;
+        const currentIdx = this.state.selectedZone ? activeIds.indexOf(this.state.selectedZone) : 0;
+        const nextIdx = ((currentIdx + direction) % activeIds.length + activeIds.length) % activeIds.length;
+        this.selectZone(activeIds[nextIdx]);
     },
 
     // --- LIVE SENSOR DATA OUTPUT ---

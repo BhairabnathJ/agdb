@@ -477,6 +477,7 @@ body {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: var(--space-3);
     margin-bottom: var(--space-6);
+    transition: transform 0.2s ease;
 }
 
 .zone-cell {
