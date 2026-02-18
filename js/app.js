@@ -1344,6 +1344,29 @@ const App = {
         };
     },
 
+    resolveUrgency: function (sample) {
+        if (!sample) return 'low';
+        if (sample.urgency === 'high' || sample.urgency === 'medium' || sample.urgency === 'low') {
+            return sample.urgency;
+        }
+
+        const status = String(sample.status || '').toLowerCase();
+        if (status.includes('critical') || status.includes('dry')) return 'high';
+        if (status.includes('warn') || status.includes('watch')) return 'medium';
+        if (status.includes('healthy') || status.includes('good')) return 'low';
+
+        const theta = Number(sample.theta || 0);
+        const refill = Number(sample.theta_refill || 0);
+        const fc = Number(sample.theta_fc || 0);
+        if (theta > 0 && refill > 0 && fc > 0) {
+            if (theta < refill - 0.01) return 'high';
+            if (theta < refill + 0.01) return 'medium';
+            return 'low';
+        }
+
+        return 'low';
+    },
+
     // --- RENDERING ---
     render: function () {
         if (!this.state.currentSample) return;
@@ -1407,7 +1430,7 @@ const App = {
         if (tempEl) tempEl.textContent = `${s.temp_c.toFixed(1)}°C`;
         const allZones = Object.values(MockAPI.getAllZones ? MockAPI.getAllZones() : {});
         const sampledZones = allZones.filter((z) => z.latest).length;
-        const healthyZones = allZones.filter((z) => z.latest && z.latest.urgency === 'low').length;
+        const healthyZones = allZones.filter((z) => z.latest && this.resolveUrgency(z.latest) === 'low').length;
         if (zonesEl) zonesEl.textContent = this.tr('sensors_count', { count: Object.keys(MockAPI.zones || {}).length });
         if (zoneSummaryEl) {
             if (sampledZones === 0) {
@@ -1434,9 +1457,10 @@ const App = {
 
         // Update title based on status
         if (titleEl) {
-            if (s.urgency === 'high') {
+            const urgency = this.resolveUrgency(s);
+            if (urgency === 'high') {
                 titleEl.textContent = this.tr('tier2_title_high');
-            } else if (s.urgency === 'medium') {
+            } else if (urgency === 'medium') {
                 titleEl.textContent = this.tr('tier2_title_medium');
             } else {
                 titleEl.textContent = this.tr('tier2_title_low');
@@ -1448,7 +1472,7 @@ const App = {
         list.appendChild(li1);
 
         // Yield Risk
-        if (s.urgency === 'high') {
+        if (this.resolveUrgency(s) === 'high') {
             const liYield = document.createElement('li');
             liYield.style.color = '#C62828';
             const cropMeta = THRESHOLDS_STORE.getCrop(this.state.settings.crop);
@@ -1509,7 +1533,10 @@ const App = {
         const zones = MockAPI.getAllZones();
         let needsAttention = 0;
         Object.values(zones).forEach((z) => {
-            if (z.latest && (z.latest.urgency === 'high' || z.latest.urgency === 'medium')) needsAttention++;
+            if (z.latest) {
+                const urgency = this.resolveUrgency(z.latest);
+                if (urgency === 'high' || urgency === 'medium') needsAttention++;
+            }
         });
         this.setSafeText('health-status', this.tr('health_status_line', { status: moistureState.status }));
         this.setSafeText('health-zone', this.tr('health_zones_line', { count: needsAttention }));
@@ -1716,8 +1743,8 @@ const App = {
 
         const urgencyWeight = { high: 0, medium: 1, low: 2 };
         return sensors.sort((a, b) => {
-            const ua = zones[a.id]?.latest?.urgency || 'low';
-            const ub = zones[b.id]?.latest?.urgency || 'low';
+            const ua = this.resolveUrgency(zones[a.id]?.latest);
+            const ub = this.resolveUrgency(zones[b.id]?.latest);
             const wa = urgencyWeight[ua] ?? 2;
             const wb = urgencyWeight[ub] ?? 2;
             if (wa !== wb) return wa - wb;
@@ -1775,7 +1802,7 @@ const App = {
             const cell = document.getElementById(`zone-${zoneId}`);
             if (cell && zones[zoneId].latest) {
                 cell.className = 'zone-cell';
-                const urgency = zones[zoneId].latest.urgency;
+                const urgency = this.resolveUrgency(zones[zoneId].latest);
 
                 if (urgency === 'high') cell.classList.add('critical');
                 else if (urgency === 'medium') cell.classList.add('warning');
