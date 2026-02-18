@@ -233,6 +233,10 @@ body {
     margin-bottom: var(--space-6);
 }
 
+.metrics-grid-simple {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .metric-cell {
     background: linear-gradient(180deg, #ffffff 0%, #f8fbf9 100%);
     border: 1px solid var(--neutral-200);
@@ -290,6 +294,63 @@ body {
     display: block;
     gap: var(--space-3);
     margin-bottom: 10px;
+}
+
+.history-controls {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    margin-bottom: 12px;
+}
+
+.metric-switcher {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.metric-switch {
+    border: 1px solid var(--neutral-300);
+    background: #fff;
+    color: var(--neutral-700);
+    border-radius: 12px;
+    padding: 10px 12px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.metric-switch.active {
+    border-color: transparent;
+    background: linear-gradient(145deg, var(--sage-500), var(--sage-700));
+    color: #fff;
+}
+
+.metric-switch-label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    opacity: 0.95;
+}
+
+.metric-switch-value {
+    display: block;
+    margin-top: 2px;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.history-range {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: var(--neutral-600);
+    max-width: 220px;
+}
+
+.form-select-compact {
+    padding: 10px 12px;
+    font-size: 0.92rem;
 }
 
 .chart-controls .font-h3 {
@@ -780,6 +841,14 @@ body.dev-mode .dev-indicator {
     }
 
     .metrics-grid-dense {
+        grid-template-columns: 1fr;
+    }
+
+    .metrics-grid-simple {
+        grid-template-columns: 1fr;
+    }
+
+    .metric-switcher {
         grid-template-columns: 1fr;
     }
 

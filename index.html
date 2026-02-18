@@ -95,8 +95,7 @@
                 <button class="btn-text" onclick="App.navigate('home')">‹ Back to Home</button>
             </div>
 
-            <!-- Current Readings Grid (Updated for VWC/Psi) -->
-            <div class="metrics-grid-dense">
+            <div class="metrics-grid-dense metrics-grid-simple">
                 <div class="metric-cell healthy" id="t3-moist-cell">
                     <label>Soil Moisture</label>
                     <span id="t3-moist">--%</span>
@@ -108,59 +107,43 @@
                     <small id="t3-temp-context">Crop comfort: --</small>
                 </div>
                 <div class="metric-cell">
-                    <label>Sensor Confidence</label>
-                    <span id="t3-confidence">--%</span>
-                    <small id="t3-confidence-context">Reliability: --</small>
-                </div>
-                <div class="metric-cell">
-                    <label>Plant Water Access</label>
-                    <span id="t3-vpd">--</span>
-                    <small id="t3-access-context">Roots can reach water: --</small>
-                </div>
-                <div class="metric-cell">
                     <label>Available Water</label>
                     <span id="t3-leaf">--</span>
                     <small id="t3-aw-context">Target reserve: --</small>
-                </div>
-                <div class="metric-cell">
-                    <label>Water Used</label>
-                    <span id="t3-depletion">--</span>
-                    <small id="t3-depletion-context">Since last refill: --</small>
                 </div>
             </div>
 
             <!-- Chart -->
             <div class="chart-wrapper">
-                <div class="chart-controls">
-                    <h3 id="chart-title" class="font-h3">Moisture Trend</h3>
-                    <div id="chart-metric-pills" class="chart-pills">
-                        <button class="chart-pill active" data-metric="theta_pct">Soil Moisture</button>
-                        <button class="chart-pill" data-metric="aw_mm">Available Water</button>
-                        <button class="chart-pill" data-metric="depletion_pct">Water Used</button>
-                        <button class="chart-pill" data-metric="temp_c">Temperature</button>
+                <div class="history-controls">
+                    <h3 id="chart-title" class="font-h3">Soil Moisture Trend</h3>
+                    <div id="chart-metric-pills" class="metric-switcher">
+                        <button class="metric-switch active" data-metric="theta_pct">
+                            <span class="metric-switch-label">💧 Moisture</span>
+                            <span class="metric-switch-value" id="metric-switch-theta">--%</span>
+                        </button>
+                        <button class="metric-switch" data-metric="temp_c">
+                            <span class="metric-switch-label">🌡️ Temp</span>
+                            <span class="metric-switch-value" id="metric-switch-temp">--°C</span>
+                        </button>
+                        <button class="metric-switch" data-metric="aw_mm">
+                            <span class="metric-switch-label">💦 Water</span>
+                            <span class="metric-switch-value" id="metric-switch-aw">--mm</span>
+                        </button>
                     </div>
-                </div>
-                <div class="chart-controls">
-                    <div id="chart-view-pills" class="chart-pills">
-                        <button class="chart-pill active" data-chart-view="field_avg">Field Average</button>
-                        <button class="chart-pill" data-chart-view="compare_zones">Compare Zones</button>
-                    </div>
-                    <div id="chart-range-pills" class="chart-pills">
-                        <button class="chart-pill active" data-hours="12">12H</button>
-                        <button class="chart-pill" data-hours="24">24H</button>
-                        <button class="chart-pill" data-hours="168">7D</button>
-                        <button class="chart-pill" data-hours="720">30D</button>
-                    </div>
+                    <label class="history-range">
+                        Time Range
+                        <select id="chart-range-select" class="form-select form-select-compact">
+                            <option value="24">Last 24 hours</option>
+                            <option value="168">Last 7 days</option>
+                            <option value="720">Last 30 days</option>
+                        </select>
+                    </label>
                 </div>
                 <p id="chart-trend" style="margin:0 0 10px; color:var(--neutral-600); font-size:0.9rem;">Trend: --</p>
                 <div id="chart-strip" class="chart-strip">--</div>
                 <div class="chart-container" id="tier3-chart">
                     <!-- SVG Chart -->
-                </div>
-                <div class="chart-status-legend">
-                    <span class="status-badge healthy">🟢 Healthy</span>
-                    <span class="status-badge warning">🟡 Watch</span>
-                    <span class="status-badge critical">🔴 Action Needed</span>
                 </div>
                 <div class="chart-insights">
                     <p id="chart-event-1">• --</p>
@@ -179,6 +162,21 @@
                     <label>Field Health</label>
                     <span id="health-status">Overall status: --</span>
                     <small id="health-zone">Zones needing attention: --</small>
+                </div>
+                <div class="metric-cell">
+                    <label>Plant Water Access</label>
+                    <span id="t3-vpd">--</span>
+                    <small id="t3-access-context">Roots can reach water: --</small>
+                </div>
+                <div class="metric-cell">
+                    <label>Sensor Confidence</label>
+                    <span id="t3-confidence">--%</span>
+                    <small id="t3-confidence-context">Reliability: --</small>
+                </div>
+                <div class="metric-cell">
+                    <label>Water Used</label>
+                    <span id="t3-depletion">--</span>
+                    <small id="t3-depletion-context">Since last refill: --</small>
                 </div>
             </div>
 
