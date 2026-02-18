@@ -32,25 +32,25 @@
 
             <!-- Actions -->
             <div class="hero-actions">
-                <button class="btn-primary btn-large" onclick="App.navigate('homeInsights')">Quick View</button>
-                <button class="btn-secondary btn-large" onclick="App.navigate('history')">Field Details</button>
+                <button id="btn-quick-view" class="btn-primary btn-large" onclick="App.navigate('homeInsights')">Quick View</button>
+                <button id="btn-field-details" class="btn-secondary btn-large" onclick="App.navigate('history')">Field Details</button>
             </div>
 
             <div class="hero-glance">
                 <div class="glance-row">
-                    <span>💧 Moisture</span>
+                    <span id="lbl-glance-moisture">💧 Moisture</span>
                     <strong id="t1-glance-moisture">Optimal</strong>
                 </div>
                 <div class="glance-row">
-                    <span>🌡 Temperature</span>
+                    <span id="lbl-glance-temp">🌡 Temperature</span>
                     <strong id="t1-glance-temp">--°C</strong>
                 </div>
                 <div class="glance-row">
-                    <span>📍 Active Sensors</span>
+                    <span id="lbl-glance-zones">📍 Active Sensors</span>
                     <strong id="t1-glance-zones">--</strong>
                 </div>
                 <div class="glance-row">
-                    <span>⏰ Last Checked</span>
+                    <span id="lbl-glance-time">⏰ Last Checked</span>
                     <strong id="t1-time">Just now</strong>
                 </div>
             </div>
@@ -73,7 +73,7 @@
         <!-- Home Insights -->
         <section id="tier-2" class="view-section">
             <div class="view-header">
-                <h2 class="font-h2">Today's Field Insight</h2>
+                <h2 id="t2-title" class="font-h2">Today's Field Insight</h2>
             </div>
 
             <div class="reasoning-card">
@@ -83,8 +83,8 @@
             </div>
 
             <div class="action-stack">
-                <button class="btn-primary btn-full" onclick="App.navigate('home')">Back to Home</button>
-                <button class="btn-ghost btn-full" onclick="App.navigate('history')">Open History</button>
+                <button id="btn-back-home-t2" class="btn-primary btn-full" onclick="App.navigate('home')">Back to Home</button>
+                <button id="btn-open-history-t2" class="btn-ghost btn-full" onclick="App.navigate('history')">Open History</button>
             </div>
         </section>
 
@@ -92,22 +92,22 @@
         <!-- History -->
         <section id="tier-3" class="view-section">
             <div class="view-header">
-                <button class="btn-text" onclick="App.navigate('home')">‹ Back to Home</button>
+                <button id="btn-back-home-t3" class="btn-text" onclick="App.navigate('home')">‹ Back to Home</button>
             </div>
 
             <div class="metrics-grid-dense metrics-grid-simple">
                 <div class="metric-cell healthy" id="t3-moist-cell">
-                    <label>Soil Moisture</label>
+                    <label id="lbl-t3-soil-moisture">Soil Moisture</label>
                     <span id="t3-moist">--%</span>
                     <small id="t3-moist-context">Target: -- · Status: --</small>
                 </div>
                 <div class="metric-cell" id="t3-soil-temp-cell">
-                    <label>Soil Temperature</label>
+                    <label id="lbl-t3-soil-temp">Soil Temperature</label>
                     <span id="t3-soil-temp">--°C</span>
                     <small id="t3-temp-context">Crop comfort: --</small>
                 </div>
                 <div class="metric-cell">
-                    <label>Available Water</label>
+                    <label id="lbl-t3-aw">Available Water</label>
                     <span id="t3-leaf">--</span>
                     <small id="t3-aw-context">Target reserve: --</small>
                 </div>
@@ -119,19 +119,19 @@
                     <h3 id="chart-title" class="font-h3">Soil Moisture Trend</h3>
                     <div id="chart-metric-pills" class="metric-switcher">
                         <button class="metric-switch active" data-metric="theta_pct">
-                            <span class="metric-switch-label">💧 Moisture</span>
+                            <span id="lbl-switch-moisture" class="metric-switch-label">💧 Moisture</span>
                             <span class="metric-switch-value" id="metric-switch-theta">--%</span>
                         </button>
                         <button class="metric-switch" data-metric="temp_c">
-                            <span class="metric-switch-label">🌡️ Temp</span>
+                            <span id="lbl-switch-temp" class="metric-switch-label">🌡️ Temp</span>
                             <span class="metric-switch-value" id="metric-switch-temp">--°C</span>
                         </button>
                         <button class="metric-switch" data-metric="aw_mm">
-                            <span class="metric-switch-label">💦 Water</span>
+                            <span id="lbl-switch-water" class="metric-switch-label">💦 Water</span>
                             <span class="metric-switch-value" id="metric-switch-aw">--mm</span>
                         </button>
                     </div>
-                    <label class="history-range">
+                    <label id="lbl-time-range" class="history-range">
                         Time Range
                         <select id="chart-range-select" class="form-select form-select-compact">
                             <option value="24">Last 24 hours</option>
@@ -154,27 +154,27 @@
 
             <div class="metrics-grid-dense">
                 <div class="metric-cell" id="decision-panel">
-                    <label>Watering Decision</label>
+                    <label id="lbl-decision">Watering Decision</label>
                     <span id="decision-need">Should I water today? --</span>
                     <small id="decision-next">Next watering window: --</small>
                 </div>
                 <div class="metric-cell" id="health-panel">
-                    <label>Field Health</label>
+                    <label id="lbl-field-health">Field Health</label>
                     <span id="health-status">Overall status: --</span>
                     <small id="health-zone">Zones needing attention: --</small>
                 </div>
                 <div class="metric-cell">
-                    <label>Plant Water Access</label>
+                    <label id="lbl-plant-water-access">Plant Water Access</label>
                     <span id="t3-vpd">--</span>
                     <small id="t3-access-context">Roots can reach water: --</small>
                 </div>
                 <div class="metric-cell">
-                    <label>Sensor Confidence</label>
+                    <label id="lbl-sensor-confidence">Sensor Confidence</label>
                     <span id="t3-confidence">--%</span>
                     <small id="t3-confidence-context">Reliability: --</small>
                 </div>
                 <div class="metric-cell">
-                    <label>Water Used</label>
+                    <label id="lbl-water-used">Water Used</label>
                     <span id="t3-depletion">--</span>
                     <small id="t3-depletion-context">Since last refill: --</small>
                 </div>
@@ -182,12 +182,12 @@
 
             <!-- Actions -->
             <div class="action-grid">
-                <button class="btn-primary" onclick="App.navigate('map')">View Field Map</button>
-                <button class="btn-secondary" onclick="App.exportCSV()">Download DB</button>
+                <button id="btn-view-field-map" class="btn-primary" onclick="App.navigate('map')">View Field Map</button>
+                <button id="btn-download-db" class="btn-secondary" onclick="App.exportCSV()">Download DB</button>
             </div>
             <div class="action-grid" style="margin-top:8px;">
-                <button class="btn-secondary" onclick="App.navigate('settings')">View Settings</button>
-                <button class="btn-ghost" onclick="App.toggleDevMode()">Open Dev Tools</button>
+                <button id="btn-view-settings" class="btn-secondary" onclick="App.navigate('settings')">View Settings</button>
+                <button id="btn-open-dev-tools" class="btn-ghost" onclick="App.toggleDevMode()">Open Dev Tools</button>
             </div>
 
         </section>
@@ -196,31 +196,31 @@
         <!-- Field Map -->
         <section id="tier-map" class="view-section">
             <div class="view-header">
-                <button class="btn-text" onclick="App.navigate('history')">‹ Back</button>
-                <h2 class="font-h2">Field Zones</h2>
+                <button id="btn-map-back" class="btn-text" onclick="App.navigate('history')">‹ Back</button>
+                <h2 id="map-title" class="font-h2">Field Zones</h2>
             </div>
 
             <div class="zone-legend">
-                <p style="font-size:14px; color:var(--neutral-600); margin-bottom:16px;">
+                <p id="map-help" style="font-size:14px; color:var(--neutral-600); margin-bottom:16px;">
                     Select a field section to view detailed sensor data. Gray sections have no sensor.
                 </p>
-                <button class="btn-secondary" onclick="App.toggleProblemFirst()">Problem zones first: <span id="problem-first-state">Off</span></button>
+                <button id="btn-problem-first" class="btn-secondary" onclick="App.toggleProblemFirst()">Problem zones first: <span id="problem-first-state">Off</span></button>
                 <div class="legend-items">
                     <div class="legend-item">
                         <span class="legend-color" style="background:var(--status-healthy);"></span>
-                        <span>Healthy</span>
+                        <span id="legend-healthy">Healthy</span>
                     </div>
                     <div class="legend-item">
                         <span class="legend-color" style="background:var(--status-warning);"></span>
-                        <span>Warning</span>
+                        <span id="legend-warning">Warning</span>
                     </div>
                     <div class="legend-item">
                         <span class="legend-color" style="background:var(--status-critical);"></span>
-                        <span>Critical</span>
+                        <span id="legend-critical">Critical</span>
                     </div>
                     <div class="legend-item">
                         <span class="legend-color" style="background:var(--neutral-300);"></span>
-                        <span>No Sensor</span>
+                        <span id="legend-no-sensor">No Sensor</span>
                     </div>
                 </div>
             </div>
@@ -232,44 +232,44 @@
 
             <!-- Selected Zone Details -->
             <div id="zone-details" class="zone-details" style="display:none;">
-                <h3 class="font-h3" style="margin-bottom:12px;">Field Section: <span id="zone-name">--</span></h3>
+                <h3 id="zone-section-title" class="font-h3" style="margin-bottom:12px;">Field Section: <span id="zone-name">--</span></h3>
                 <div class="metrics-grid-dense">
                     <div class="metric-cell">
-                        <label>VWC</label>
+                        <label id="lbl-zone-vwc">VWC</label>
                         <span id="zone-vwc">--%</span>
                     </div>
                     <div class="metric-cell">
-                        <label>Potential</label>
+                        <label id="lbl-zone-potential">Potential</label>
                         <span id="zone-psi">--kPa</span>
                     </div>
                     <div class="metric-cell">
-                        <label>Avail H2O</label>
+                        <label id="lbl-zone-aw">Avail H2O</label>
                         <span id="zone-aw">--mm</span>
                     </div>
                     <div class="metric-cell">
-                        <label>Depletion</label>
+                        <label id="lbl-zone-depletion">Depletion</label>
                         <span id="zone-depl">--%</span>
                     </div>
                     <div class="metric-cell">
-                        <label>Status</label>
+                        <label id="lbl-zone-status">Status</label>
                         <span id="zone-status">--</span>
                     </div>
                     <div class="metric-cell">
-                        <label>Regime</label>
+                        <label id="lbl-zone-regime">Regime</label>
                         <span id="zone-regime">--</span>
                     </div>
                 </div>
                 <div class="zone-chart-wrap">
-                    <h4 class="font-h3" style="margin-bottom:8px;">Zone Trend (Last 24h)</h4>
+                    <h4 id="zone-trend-title" class="font-h3" style="margin-bottom:8px;">Zone Trend (Last 24h)</h4>
                     <div id="zone-chart" class="zone-mini-chart"></div>
                     <p id="zone-chart-summary" style="margin:8px 0 0; color:var(--neutral-600); font-size:0.85rem;">--</p>
                 </div>
-                <button class="btn-secondary btn-full" style="margin-top:16px;" onclick="App.clearZoneSelection()">Clear
+                <button id="btn-clear-zone" class="btn-secondary btn-full" style="margin-top:16px;" onclick="App.clearZoneSelection()">Clear
                     Selection</button>
             </div>
 
             <div class="action-grid" style="margin-top:24px;">
-                <button class="btn-secondary" onclick="App.navigate('history')">Back to Dashboard</button>
+                <button id="btn-back-dashboard" class="btn-secondary" onclick="App.navigate('history')">Back to Dashboard</button>
             </div>
         </section>
 
@@ -277,44 +277,44 @@
         <!-- SETTINGS INFO -->
         <section id="settings" class="view-section">
             <div class="view-header">
-                <button class="btn-text" onclick="App.navigate('history')">‹ Back</button>
-                <h2 class="font-h2">Settings</h2>
+                <button id="btn-settings-back" class="btn-text" onclick="App.navigate('history')">‹ Back</button>
+                <h2 id="settings-title" class="font-h2">Settings</h2>
             </div>
 
             <div class="settings-tabs">
-                <button class="settings-tab active" data-settings-tab="field" onclick="App.openSettingsTab('field')">Field Setup</button>
-                <button class="settings-tab" data-settings-tab="prefs" onclick="App.openSettingsTab('prefs')">Preferences</button>
-                <button class="settings-tab" data-settings-tab="device" onclick="App.openSettingsTab('device')">Device Info</button>
+                <button id="tab-field" class="settings-tab active" data-settings-tab="field" onclick="App.openSettingsTab('field')">Field Setup</button>
+                <button id="tab-prefs" class="settings-tab" data-settings-tab="prefs" onclick="App.openSettingsTab('prefs')">Preferences</button>
+                <button id="tab-device" class="settings-tab" data-settings-tab="device" onclick="App.openSettingsTab('device')">Device Info</button>
             </div>
 
             <div class="settings-panel active" data-settings-panel="field">
                 <div class="settings-group">
-                    <h3 class="font-h3">Field Setup</h3>
-                    <label class="settings-label">Crop Type</label>
+                    <h3 id="settings-field-title" class="font-h3">Field Setup</h3>
+                    <label id="lbl-crop-type" class="settings-label">Crop Type</label>
                     <select class="form-select" id="set-crop">
                         <option value="tomato">Tomato</option>
                     </select>
 
-                    <label class="settings-label" style="margin-top:12px;">Soil Type</label>
+                    <label id="lbl-soil-type" class="settings-label" style="margin-top:12px;">Soil Type</label>
                     <select class="form-select" id="set-soil">
                         <option value="loam">Normal / Mixed</option>
                     </select>
 
-                    <label class="settings-label" style="margin-top:12px;">Planting Date</label>
+                    <label id="lbl-planting-date" class="settings-label" style="margin-top:12px;">Planting Date</label>
                     <input type="date" class="form-select" id="set-date">
 
-                    <label class="settings-label" style="margin-top:12px;">Flow Rate (L/hr)</label>
+                    <label id="lbl-flow-rate" class="settings-label" style="margin-top:12px;">Flow Rate (L/hr)</label>
                     <input type="number" class="form-select" id="set-flow" value="1000">
 
-                    <label class="settings-label" style="margin-top:12px;">Farm Area (Hectares)</label>
+                    <label id="lbl-farm-area" class="settings-label" style="margin-top:12px;">Farm Area (Hectares)</label>
                     <input type="number" class="form-select" id="set-area" value="2.5">
                 </div>
             </div>
 
             <div class="settings-panel" data-settings-panel="prefs">
                 <div class="settings-group">
-                    <h3 class="font-h3">Preferences</h3>
-                    <label class="settings-label">Language</label>
+                    <h3 id="settings-prefs-title" class="font-h3">Preferences</h3>
+                    <label id="lbl-language" class="settings-label">Language</label>
                     <select class="form-select" id="set-lang" onchange="App.setLang(this.value)">
                         <option value="en">English</option>
                         <option value="es">Español</option>
@@ -322,7 +322,7 @@
                 </div>
 
                 <div class="settings-group">
-                    <label class="settings-label">Temperature Unit</label>
+                    <label id="lbl-temp-unit" class="settings-label">Temperature Unit</label>
                     <div class="toggle-group">
                         <button class="btn-full active" id="btn-c">°C</button>
                         <button class="btn-full" id="btn-f">°F</button>
@@ -332,31 +332,31 @@
 
             <div class="settings-panel" data-settings-panel="device">
                 <div class="settings-group">
-                    <label class="settings-label">Device Info</label>
+                    <label id="lbl-device-info" class="settings-label">Device Info</label>
                     <div class="info-box">
-                        <p>Serial: AG-2026-X88</p>
-                        <p>Firmware: v2.5.0</p>
-                        <p>Storage: 45% used</p>
-                        <p>Troubleshooting: press <strong>Ctrl+Shift+D</strong> for diagnostics and dev tools.</p>
+                        <p id="device-serial">Serial: AG-2026-X88</p>
+                        <p id="device-firmware">Firmware: v2.5.0</p>
+                        <p id="device-storage">Storage: 45% used</p>
+                        <p id="device-troubleshooting">Troubleshooting: press <strong>Ctrl+Shift+D</strong> for diagnostics and dev tools.</p>
                     </div>
                 </div>
             </div>
 
-            <button class="btn-primary btn-full" onclick="App.saveSettings()">Save Configuration</button>
+            <button id="btn-save-config" class="btn-primary btn-full" onclick="App.saveSettings()">Save Configuration</button>
         </section>
 
     </main>
     <div id="dev-indicator" class="dev-indicator">DEV MODE</div>
     <aside id="dev-panel" class="dev-panel" aria-label="Developer tools">
         <div class="view-header">
-            <h2 class="font-h2">Developer Tools</h2>
-            <button class="btn-secondary" onclick="App.toggleDevMode()">Close</button>
+            <h2 id="dev-tools-title" class="font-h2">Developer Tools</h2>
+            <button id="btn-dev-close" class="btn-secondary" onclick="App.toggleDevMode()">Close</button>
         </div>
         <div class="settings-group">
-            <h3 class="font-h3">Simulation</h3>
+            <h3 id="dev-sim-title" class="font-h3">Simulation</h3>
             <div class="action-grid">
-                <button class="btn-secondary" onclick="App.simulateRain()">Simulate Rain</button>
-                <button class="btn-secondary" onclick="App.simulateDrought()">Simulate Drought</button>
+                <button id="btn-sim-rain" class="btn-secondary" onclick="App.simulateRain()">Simulate Rain</button>
+                <button id="btn-sim-drought" class="btn-secondary" onclick="App.simulateDrought()">Simulate Drought</button>
             </div>
             <div class="action-grid" style="margin-top:12px;">
                 <button class="btn-secondary" id="btn-long-run" onclick="App.simulateLongRun()">10-Min Simulation</button>
@@ -367,14 +367,14 @@
             </div>
         </div>
         <div class="settings-group">
-            <h3 class="font-h3">Diagnostics & Exports</h3>
+            <h3 id="dev-diag-title" class="font-h3">Diagnostics & Exports</h3>
             <div class="action-grid">
-                <button class="btn-secondary" onclick="App.exportSimulationLogs()">Export Logs (JSON)</button>
-                <button class="btn-secondary" onclick="App.exportAllData()">Export Full Data</button>
+                <button id="btn-export-logs" class="btn-secondary" onclick="App.exportSimulationLogs()">Export Logs (JSON)</button>
+                <button id="btn-export-full" class="btn-secondary" onclick="App.exportAllData()">Export Full Data</button>
             </div>
             <div class="action-grid" style="margin-top:12px;">
-                <button class="btn-secondary" onclick="App.goToDiagnostics()">System Diagnostics</button>
-                <button class="btn-secondary" onclick="App.resetSimulationState()">Reset Simulation</button>
+                <button id="btn-system-diagnostics" class="btn-secondary" onclick="App.goToDiagnostics()">System Diagnostics</button>
+                <button id="btn-reset-sim" class="btn-secondary" onclick="App.resetSimulationState()">Reset Simulation</button>
             </div>
         </div>
     </aside>

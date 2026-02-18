@@ -923,6 +923,7 @@ const App = {
 
         this.setupListeners();
         this.bindMobileGestures();
+        this.applyStaticTranslations();
         this.renderZoneGrid();
         this.syncBottomNav('home');
         this.updateData();
@@ -1179,8 +1180,119 @@ const App = {
     setLang: function (code) {
         if (typeof I18n !== 'undefined' && I18n.setLang(code)) {
             Logger.log('I18N', `Language changed to ${code}`);
+            this.applyStaticTranslations();
             this.render();
         }
+    },
+
+    tr: function (key, params = {}, fallback = '') {
+        if (typeof I18n !== 'undefined' && I18n.t) {
+            const out = I18n.t(key, params);
+            return out === key && fallback ? fallback : out;
+        }
+        return fallback || key;
+    },
+
+    setText: function (id, text) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    },
+
+    applyStaticTranslations: function () {
+        const T = (k, p, f) => this.tr(k, p, f);
+        this.setText('btn-quick-view', T('quick_view'));
+        this.setText('btn-field-details', T('field_details'));
+        this.setText('lbl-glance-moisture', T('glance_moisture'));
+        this.setText('lbl-glance-temp', T('glance_temperature'));
+        this.setText('lbl-glance-zones', T('glance_active_sensors'));
+        this.setText('lbl-glance-time', T('glance_last_checked'));
+        this.setText('t1-footer-note', T('updates_every_few_minutes'));
+        this.setText('t2-title', T('todays_field_insight'));
+        this.setText('btn-back-home-t2', T('back_to_home'));
+        this.setText('btn-open-history-t2', T('open_history'));
+        this.setText('btn-back-home-t3', T('back_to_home'));
+        this.setText('lbl-t3-soil-moisture', T('soil_moisture'));
+        this.setText('lbl-t3-soil-temp', T('soil_temperature'));
+        this.setText('lbl-t3-aw', T('available_water'));
+        this.setText('lbl-switch-moisture', T('metric_moisture'));
+        this.setText('lbl-switch-temp', T('metric_temp'));
+        this.setText('lbl-switch-water', T('metric_water'));
+        this.setText('lbl-time-range', T('time_range'));
+        const rangeSelect = document.getElementById('chart-range-select');
+        if (rangeSelect) {
+            const opts = Array.from(rangeSelect.options || []);
+            if (opts[0]) opts[0].textContent = T('last_24_hours');
+            if (opts[1]) opts[1].textContent = T('last_7_days');
+            if (opts[2]) opts[2].textContent = T('last_30_days');
+        }
+        this.setText('lbl-decision', T('watering_decision'));
+        this.setText('lbl-field-health', T('field_health'));
+        this.setText('lbl-plant-water-access', T('plant_water_access'));
+        this.setText('lbl-sensor-confidence', T('sensor_confidence'));
+        this.setText('lbl-water-used', T('water_used'));
+        this.setText('btn-view-field-map', T('view_field_map'));
+        this.setText('btn-download-db', T('download_db'));
+        this.setText('btn-view-settings', T('view_settings'));
+        this.setText('btn-open-dev-tools', T('open_dev_tools'));
+        this.setText('btn-map-back', T('back'));
+        this.setText('map-title', T('field_zones'));
+        this.setText('map-help', T('map_help'));
+        const pfBtn = document.getElementById('btn-problem-first');
+        if (pfBtn) pfBtn.childNodes[0].textContent = `${T('problem_zones_first')}: `;
+        this.setText('problem-first-state', this.state.problemFirst ? T('problem_first_on') : T('problem_first_off'));
+        this.setText('legend-healthy', T('healthy'));
+        this.setText('legend-warning', T('warning'));
+        this.setText('legend-critical', T('critical'));
+        this.setText('legend-no-sensor', T('no_sensor'));
+        const sectionTitle = document.getElementById('zone-section-title');
+        if (sectionTitle) sectionTitle.childNodes[0].textContent = `${T('field_section')}: `;
+        this.setText('lbl-zone-vwc', T('zone_vwc'));
+        this.setText('lbl-zone-potential', T('zone_potential'));
+        this.setText('lbl-zone-aw', T('zone_avail_h2o'));
+        this.setText('lbl-zone-depletion', T('zone_depletion'));
+        this.setText('lbl-zone-status', T('zone_status'));
+        this.setText('lbl-zone-regime', T('zone_regime'));
+        this.setText('zone-trend-title', T('zone_trend_24h'));
+        this.setText('btn-clear-zone', T('clear_selection'));
+        this.setText('btn-back-dashboard', T('back_to_dashboard'));
+        this.setText('btn-settings-back', T('back'));
+        this.setText('settings-title', T('settings'));
+        this.setText('tab-field', T('field_setup'));
+        this.setText('tab-prefs', T('preferences'));
+        this.setText('tab-device', T('device_info'));
+        this.setText('settings-field-title', T('field_setup'));
+        this.setText('lbl-crop-type', T('crop_type'));
+        this.setText('lbl-soil-type', T('soil_type'));
+        this.setText('lbl-planting-date', T('planting_date'));
+        this.setText('lbl-flow-rate', T('flow_rate'));
+        this.setText('lbl-farm-area', T('farm_area'));
+        this.setText('settings-prefs-title', T('preferences'));
+        this.setText('lbl-language', T('language'));
+        this.setText('lbl-temp-unit', T('temperature_unit'));
+        this.setText('lbl-device-info', T('device_info'));
+        this.setText('device-serial', T('device_serial'));
+        this.setText('device-firmware', T('device_firmware'));
+        this.setText('device-storage', T('device_storage'));
+        this.setText('device-troubleshooting', T('device_troubleshooting'));
+        this.setText('btn-save-config', T('save_configuration'));
+        this.setText('dev-indicator', T('dev_mode'));
+        this.setText('dev-tools-title', T('developer_tools'));
+        this.setText('btn-dev-close', T('close'));
+        this.setText('dev-sim-title', T('simulation'));
+        this.setText('btn-sim-rain', T('simulate_rain'));
+        this.setText('btn-sim-drought', T('simulate_drought'));
+        this.setText('btn-long-run', T('simulation_10m'));
+        this.setText('btn-stop-sim', T('stop'));
+        this.setText('dev-diag-title', T('diagnostics_exports'));
+        this.setText('btn-export-logs', T('export_logs_json'));
+        this.setText('btn-export-full', T('export_full_data'));
+        this.setText('btn-system-diagnostics', T('system_diagnostics'));
+        this.setText('btn-reset-sim', T('reset_simulation'));
+        this.setText('nav-home', T('nav_home'));
+        this.setText('nav-map', T('nav_field_map'));
+        this.setText('nav-history', T('nav_history'));
+        this.setText('nav-settings', T('nav_settings'));
+        this.setText('chart-trend', `${T('trend_stable')} · --`);
     },
 
     evaluateMoistureStatus: function (sample) {
@@ -1195,35 +1307,37 @@ const App = {
             return {
                 level: 'critical',
                 emoji: '🔴',
-                status: 'CRITICAL',
-                action: 'Water within 12 hours',
-                decision: 'Yes, water soon',
-                decisionDetail: 'Moisture is below safe target. Prioritize irrigation now.',
+                status: this.tr('status_critical_short'),
+                action: this.tr('action_water_12h'),
+                decision: this.tr('decision_yes_soon'),
+                decisionDetail: this.tr('decision_detail_critical'),
                 targetLow,
                 targetHigh,
                 hoursToAction: 12
             };
         }
         if (thetaPct < targetLow + 2) {
+            const windowHours = Math.min(24, Math.max(4, hoursToWatch));
+            const planHours = Math.min(36, Math.max(12, hoursToWatch));
             return {
                 level: 'warning',
                 emoji: '🟡',
-                status: 'WATCH',
-                action: `Check again in ${Math.min(24, Math.max(4, hoursToWatch))} hours`,
-                decision: 'Not now, prepare soon',
-                decisionDetail: `Moisture is near the lower target. Plan watering within ${Math.min(36, Math.max(12, hoursToWatch))} hours.`,
+                status: this.tr('status_watch_short'),
+                action: this.tr('action_check_hours', { hours: windowHours }),
+                decision: this.tr('decision_prepare_soon'),
+                decisionDetail: this.tr('decision_detail_warning', { hours: planHours }),
                 targetLow,
                 targetHigh,
-                hoursToAction: Math.min(36, Math.max(12, hoursToWatch))
+                hoursToAction: planHours
             };
         }
         return {
             level: 'healthy',
             emoji: '🟢',
-            status: 'HEALTHY',
-            action: 'No watering needed today',
-            decision: 'No, not today',
-            decisionDetail: 'Moisture is in a healthy range. Continue monitoring.',
+            status: this.tr('status_healthy_short'),
+            action: this.tr('action_no_water_today'),
+            decision: this.tr('decision_no_today'),
+            decisionDetail: this.tr('decision_detail_healthy'),
             targetLow,
             targetHigh,
             hoursToAction: 36
@@ -1263,50 +1377,50 @@ const App = {
 
         statusIcon.className = 'status-circle-large';
         const hour = new Date().getHours();
-        let greeting = 'Good evening';
-        if (hour < 12) greeting = 'Good morning';
-        else if (hour < 17) greeting = 'Good afternoon';
+        let greeting = this.tr('greeting_evening');
+        if (hour < 12) greeting = this.tr('greeting_morning');
+        else if (hour < 17) greeting = this.tr('greeting_afternoon');
         if (greetingEl) greetingEl.textContent = `${greeting} 👋`;
-        if (weatherEl) weatherEl.textContent = s.temp_c > 30 ? '☀️ Hot and dry today' : (s.temp_c < 18 ? '⛅ Cool conditions' : '🌤 Mild field conditions');
+        if (weatherEl) weatherEl.textContent = s.temp_c > 30 ? this.tr('weather_hot') : (s.temp_c < 18 ? this.tr('weather_cool') : this.tr('weather_mild'));
 
         const moistureState = this.evaluateMoistureStatus(s);
 
         if (moistureState.level === 'critical') {
             statusIcon.classList.add('critical');
-            msgEl.textContent = 'Your field needs watering attention today.';
-            instrEl.textContent = `Critical moisture detected. ${moistureState.action}.`;
+            msgEl.textContent = this.tr('home_msg_critical');
+            instrEl.textContent = this.tr('home_instr_critical', { action: moistureState.action });
         } else if (moistureState.level === 'warning') {
             statusIcon.classList.add('warning');
-            msgEl.textContent = 'Your field is stable, but a few areas are drying.';
-            instrEl.textContent = `${moistureState.action}.`;
+            msgEl.textContent = this.tr('home_msg_warning');
+            instrEl.textContent = this.tr('home_instr_warning', { action: moistureState.action });
         } else {
             statusIcon.classList.add('healthy');
-            msgEl.textContent = 'Your field is looking healthy today.';
-            instrEl.textContent = 'Soil moisture is at good levels across your active zones.';
+            msgEl.textContent = this.tr('home_msg_healthy');
+            instrEl.textContent = this.tr('home_instr_healthy');
         }
 
         if (timeEl) {
             const minsAgo = Math.max(0, Math.round((Date.now() - s.timestamp * 1000) / 60000));
-            timeEl.textContent = minsAgo <= 1 ? 'Updated just now' : `Updated ${minsAgo} min ago`;
+            timeEl.textContent = minsAgo <= 1 ? this.tr('updated_just_now') : this.tr('updated_min_ago', { mins: minsAgo });
         }
         if (moistureEl) moistureEl.textContent = `${moistureState.emoji} ${moistureState.status}`;
         if (tempEl) tempEl.textContent = `${s.temp_c.toFixed(1)}°C`;
         const allZones = Object.values(MockAPI.getAllZones ? MockAPI.getAllZones() : {});
         const sampledZones = allZones.filter((z) => z.latest).length;
         const healthyZones = allZones.filter((z) => z.latest && z.latest.urgency === 'low').length;
-        if (zonesEl) zonesEl.textContent = `${Object.keys(MockAPI.zones || {}).length} sensors`;
+        if (zonesEl) zonesEl.textContent = this.tr('sensors_count', { count: Object.keys(MockAPI.zones || {}).length });
         if (zoneSummaryEl) {
             if (sampledZones === 0) {
-                zoneSummaryEl.textContent = `Collecting data from ${allZones.length} zones`;
+                zoneSummaryEl.textContent = this.tr('collecting_data_from_zones', { count: allZones.length });
             } else {
-                zoneSummaryEl.textContent = `${healthyZones} of ${sampledZones} reporting zones healthy`;
+                zoneSummaryEl.textContent = this.tr('reporting_zones_healthy', { healthy: healthyZones, count: sampledZones });
             }
         }
 
         if (sampledZones > 0 && healthyZones === 0) {
             statusIcon.className = 'status-circle-large warning';
-            msgEl.textContent = 'Your field has no healthy zones right now.';
-            instrEl.textContent = 'Open Field Details to see which zones need attention first.';
+            msgEl.textContent = this.tr('home_msg_no_healthy');
+            instrEl.textContent = this.tr('home_instr_no_healthy');
         }
     },
 
@@ -1321,16 +1435,16 @@ const App = {
         // Update title based on status
         if (titleEl) {
             if (s.urgency === 'high') {
-                titleEl.textContent = 'Watering needs your attention today';
+                titleEl.textContent = this.tr('tier2_title_high');
             } else if (s.urgency === 'medium') {
-                titleEl.textContent = 'Field check recommended soon';
+                titleEl.textContent = this.tr('tier2_title_medium');
             } else {
-                titleEl.textContent = 'Why your field is in good shape';
+                titleEl.textContent = this.tr('tier2_title_low');
             }
         }
 
         const li1 = document.createElement('li');
-        li1.innerHTML = `<strong>Soil moisture is ${(s.theta * 100).toFixed(1)}%</strong> (ideal around ${(s.theta_fc * 100).toFixed(0)}%).`;
+        li1.innerHTML = `<strong>${this.tr('tier2_moisture_reason', { moisture: (s.theta * 100).toFixed(1), ideal: (s.theta_fc * 100).toFixed(0) })}</strong>`;
         list.appendChild(li1);
 
         // Yield Risk
@@ -1341,21 +1455,21 @@ const App = {
             const stageMeta = THRESHOLDS_STORE.getCropStage(this.state.settings.crop, this.state.settings.planting_ts);
             const cropLabel = cropMeta?.display_name || this.state.settings.crop || "Unknown";
             const stageLabel = stageMeta?.name || "current stage";
-            liYield.innerHTML = `⚠️ <strong>Crop stress risk is elevated for ${cropLabel} (${stageLabel} stage).</strong>`;
+            liYield.innerHTML = `⚠️ <strong>${this.tr('tier2_crop_stress', { crop: cropLabel, stage: stageLabel })}</strong>`;
             list.appendChild(liYield);
         }
 
         // Crop Age
         const liStage = document.createElement('li');
-        liStage.innerHTML = `Crop age: <strong>${this.getDaysAfterPlanting()} days after planting</strong>.`;
+        liStage.innerHTML = `<strong>${this.tr('tier2_crop_age', { days: this.getDaysAfterPlanting() })}</strong>`;
         list.appendChild(liStage);
 
         const li2 = document.createElement('li');
-        li2.textContent = `Water trend: ${s.regime ? s.regime.toLowerCase() : 'still learning'} `;
+        li2.textContent = this.tr('tier2_water_trend', { trend: s.regime ? s.regime.toLowerCase() : this.tr('still_learning') });
         list.appendChild(li2);
 
         const liConf = document.createElement('li');
-        liConf.innerHTML = `Model confidence: <strong>${(s.confidence * 100).toFixed(0)}%</strong>.`;
+        liConf.innerHTML = `<strong>${this.tr('tier2_model_confidence', { confidence: (s.confidence * 100).toFixed(0) })}</strong>`;
         list.appendChild(liConf);
     },
 
@@ -1374,12 +1488,12 @@ const App = {
         this.setSafeText('metric-switch-theta', `${thetaPct.toFixed(1)}%`);
         this.setSafeText('metric-switch-temp', `${s.temp_c.toFixed(1)}°C`);
         this.setSafeText('metric-switch-aw', s.AW_mm ? `${s.AW_mm.toFixed(0)}mm` : '--');
-        this.setSafeText('t3-moist-context', `Target: ${targetText} · Status: ${moistureState.status}`);
-        this.setSafeText('t3-temp-context', s.temp_c > 32 ? 'Crop comfort: heat stress risk' : (s.temp_c < 12 ? 'Crop comfort: cool stress risk' : 'Crop comfort: good'));
-        this.setSafeText('t3-confidence-context', (s.confidence || 0) >= 0.75 ? 'Good accuracy · no issues' : 'Moderate accuracy · still learning');
-        this.setSafeText('t3-access-context', `Roots can reach water: ${s.psi_kPa && s.psi_kPa < 80 ? 'Yes' : 'Limited'}`);
-        this.setSafeText('t3-aw-context', `Target reserve: ${Math.max(20, moistureState.targetLow).toFixed(0)}+ mm`);
-        this.setSafeText('t3-depletion-context', `Since last refill: ${s.fractionDepleted ? (s.fractionDepleted * 100).toFixed(0) : '--'}%`);
+        this.setSafeText('t3-moist-context', this.tr('t3_target_status', { low: moistureState.targetLow.toFixed(0), high: moistureState.targetHigh.toFixed(0), status: moistureState.status }));
+        this.setSafeText('t3-temp-context', s.temp_c > 32 ? this.tr('t3_crop_comfort_heat') : (s.temp_c < 12 ? this.tr('t3_crop_comfort_cool') : this.tr('t3_crop_comfort_good')));
+        this.setSafeText('t3-confidence-context', (s.confidence || 0) >= 0.75 ? this.tr('t3_accuracy_good') : this.tr('t3_accuracy_moderate'));
+        this.setSafeText('t3-access-context', s.psi_kPa && s.psi_kPa < 80 ? this.tr('t3_roots_reach_yes') : this.tr('t3_roots_reach_limited'));
+        this.setSafeText('t3-aw-context', this.tr('t3_target_reserve', { value: Math.max(20, moistureState.targetLow).toFixed(0) }));
+        this.setSafeText('t3-depletion-context', this.tr('t3_since_refill', { value: s.fractionDepleted ? (s.fractionDepleted * 100).toFixed(0) : '--' }));
 
         const mCell = document.getElementById('t3-moist-cell');
         if (mCell) {
@@ -1389,16 +1503,16 @@ const App = {
             else mCell.classList.add('healthy');
         }
 
-        this.setSafeText('decision-need', `Should I water today? ${moistureState.decision}`);
-        this.setSafeText('decision-next', `${moistureState.decisionDetail} Next watering: within ${moistureState.hoursToAction}h.`);
+        this.setSafeText('decision-need', this.tr('decision_need_line', { decision: moistureState.decision }));
+        this.setSafeText('decision-next', this.tr('decision_next_line', { detail: moistureState.decisionDetail, hours: moistureState.hoursToAction }));
 
         const zones = MockAPI.getAllZones();
         let needsAttention = 0;
         Object.values(zones).forEach((z) => {
             if (z.latest && (z.latest.urgency === 'high' || z.latest.urgency === 'medium')) needsAttention++;
         });
-        this.setSafeText('health-status', `Overall status: ${moistureState.status}`);
-        this.setSafeText('health-zone', `Zones needing attention: ${needsAttention}`);
+        this.setSafeText('health-status', this.tr('health_status_line', { status: moistureState.status }));
+        this.setSafeText('health-zone', this.tr('health_zones_line', { count: needsAttention }));
 
         this.renderChart();
     },
@@ -1418,7 +1532,7 @@ const App = {
 
         const metricDefs = {
             theta_pct: {
-                title: 'Soil Moisture Trend',
+                title: this.tr('chart_title_moisture'),
                 unit: '%',
                 value: (h) => (h.theta ?? 0) * 100,
                 domain: () => ({ min: 0, max: 50 }),
@@ -1426,7 +1540,7 @@ const App = {
                 bands: [{ from: 20, to: 50, color: 'rgba(95,141,78,0.10)' }, { from: 15, to: 20, color: 'rgba(244,162,97,0.12)' }, { from: 0, to: 15, color: 'rgba(231,111,81,0.12)' }]
             },
             aw_mm: {
-                title: 'Available Water Trend',
+                title: this.tr('chart_title_aw'),
                 unit: 'mm',
                 value: (h) => h.AW_mm ?? 0,
                 domain: (vals) => ({ min: 0, max: Math.max(80, Math.ceil(Math.max(...vals) / 10) * 10) }),
@@ -1434,7 +1548,7 @@ const App = {
                 bands: [{ from: 40, to: null, color: 'rgba(95,141,78,0.10)' }, { from: 20, to: 40, color: 'rgba(244,162,97,0.12)' }, { from: 0, to: 20, color: 'rgba(231,111,81,0.12)' }]
             },
             depletion_pct: {
-                title: 'Water Used Trend',
+                title: this.tr('chart_title_depletion'),
                 unit: '%',
                 value: (h) => (h.fractionDepleted ?? 0) * 100,
                 domain: () => ({ min: 0, max: 100 }),
@@ -1442,7 +1556,7 @@ const App = {
                 bands: [{ from: 0, to: 40, color: 'rgba(95,141,78,0.10)' }, { from: 40, to: 70, color: 'rgba(244,162,97,0.12)' }, { from: 70, to: 100, color: 'rgba(231,111,81,0.12)' }]
             },
             temp_c: {
-                title: 'Soil Temperature Trend',
+                title: this.tr('chart_title_temp'),
                 unit: '°C',
                 value: (h) => h.temp_c ?? 0,
                 domain: (vals) => ({ min: Math.floor(Math.min(...vals, 0) / 5) * 5, max: Math.ceil(Math.max(...vals, 35) / 5) * 5 }),
@@ -1456,10 +1570,10 @@ const App = {
         const rangeStartTs = nowTs - rangeSeconds;
         const filtered = history.filter((h) => h.timestamp >= rangeStartTs && h.timestamp <= nowTs);
         if (filtered.length < 2) {
-            container.innerHTML = `<div style="padding:18px;font-size:0.95rem;color:#4f5f56;">Not enough data for this time range yet.</div>`;
-            this.setSafeText('chart-event-1', '• Keep the app running to build trend history.');
-            this.setSafeText('chart-event-2', '• Try a longer range if available.');
-            this.setSafeText('chart-event-3', '• This chart uses field-average values only.');
+            container.innerHTML = `<div style="padding:18px;font-size:0.95rem;color:#4f5f56;">${this.tr('chart_not_enough_data_range')}</div>`;
+            this.setSafeText('chart-event-1', `• ${this.tr('chart_keep_running')}`);
+            this.setSafeText('chart-event-2', `• ${this.tr('chart_try_longer')}`);
+            this.setSafeText('chart-event-3', `• ${this.tr('chart_field_average_only')}`);
             return;
         }
 
@@ -1479,7 +1593,7 @@ const App = {
             .sort((a, b) => a[0] - b[0])
             .map(([timestamp, data]) => ({ timestamp, value: data.sum / Math.max(1, data.count) }));
         if (points.length < 2) {
-            container.innerHTML = `<div style="padding:18px;font-size:0.95rem;color:#4f5f56;">Need more samples to draw a smooth average trend.</div>`;
+            container.innerHTML = `<div style="padding:18px;font-size:0.95rem;color:#4f5f56;">${this.tr('chart_need_more_samples')}</div>`;
             return;
         }
 
@@ -1491,12 +1605,12 @@ const App = {
             const max = Math.max(...points.map((p) => p.value));
             const min = Math.min(...points.map((p) => p.value));
             if ((max - min) <= 0.8) {
-                container.innerHTML = `<div style="padding:18px;font-size:0.95rem;color:#4f5f56;">Temperature is stable (${min.toFixed(1)}-${max.toFixed(1)}°C). No trend graph needed right now.</div>`;
+                container.innerHTML = `<div style="padding:18px;font-size:0.95rem;color:#4f5f56;">${this.tr('chart_temp_stable_no_graph', { min: min.toFixed(1), max: max.toFixed(1) })}</div>`;
                 const trendElStable = document.getElementById('chart-trend');
-                if (trendElStable) trendElStable.textContent = 'Trend: → Stable temperature';
-                this.setSafeText('chart-event-1', '• Temperature stayed within a tight range today.');
-                this.setSafeText('chart-event-2', '• No thermal stress event detected.');
-                this.setSafeText('chart-event-3', '• Graph hidden to reduce noise.');
+                if (trendElStable) trendElStable.textContent = this.tr('trend_stable');
+                this.setSafeText('chart-event-1', `• ${this.tr('chart_temp_tight_range')}`);
+                this.setSafeText('chart-event-2', `• ${this.tr('chart_no_thermal_stress')}`);
+                this.setSafeText('chart-event-3', `• ${this.tr('chart_graph_hidden_noise')}`);
                 return;
             }
         }
@@ -1555,14 +1669,14 @@ const App = {
         const vsYesterday = latest.value - points[yesterdayIdx].value;
         const projected = latest.value + (lastDelta * 8);
         const latestStatus = metric.status(latest.value);
-        const statusText = latestStatus === 'critical' ? 'CRITICAL - needs water soon' : (latestStatus === 'warning' ? 'WATCH - monitor' : 'HEALTHY');
+        const statusText = latestStatus === 'critical' ? this.tr('status_critical_needs_water') : (latestStatus === 'warning' ? this.tr('status_watch_monitor') : this.tr('status_healthy_word'));
 
         if (trendEl) {
-            let trendLabel = 'Trend: → Stable';
-            if (lastDelta > 0.3) trendLabel = 'Trend: ↗ Increasing';
-            if (lastDelta < -0.3) trendLabel = 'Trend: ↘ Dropping quickly';
-            trendEl.textContent = `${trendLabel} · Currently ${latest.value.toFixed(1)}${metric.unit} (${statusText}) · vs Yesterday ${vsYesterday >= 0 ? '+' : ''}${vsYesterday.toFixed(1)}${metric.unit} · Forecast +2h ${projected.toFixed(1)}${metric.unit}`;
-        }
+                let trendLabel = this.tr('trend_stable');
+                if (lastDelta > 0.3) trendLabel = this.tr('trend_increasing');
+                if (lastDelta < -0.3) trendLabel = this.tr('trend_dropping');
+                trendEl.textContent = `${trendLabel} · ${this.tr('currently_with_status', { value: latest.value.toFixed(1), unit: metric.unit, status: statusText })} · ${this.tr('vs_yesterday', { value: `${vsYesterday >= 0 ? '+' : ''}${vsYesterday.toFixed(1)}`, unit: metric.unit })} · ${this.tr('forecast_plus_2h', { value: projected.toFixed(1), unit: metric.unit })}`;
+            }
 
         if (stripEl) {
             const step = Math.max(1, Math.floor(points.length / 12));
@@ -1573,9 +1687,9 @@ const App = {
             stripEl.innerHTML = `${dots}<span class="strip-time">${startLabel} · ${midLabel} · ${endLabel}</span>`;
         }
 
-        this.setSafeText('chart-event-1', `• Currently: ${latest.value.toFixed(1)}${metric.unit} (${statusText.toLowerCase()})`);
-        this.setSafeText('chart-event-2', `• Peak: ${Math.max(...values).toFixed(1)}${metric.unit} · Low: ${Math.min(...values).toFixed(1)}${metric.unit}`);
-        this.setSafeText('chart-event-3', `• Forecast: ${projected.toFixed(1)}${metric.unit} in ~2h · field average`);
+        this.setSafeText('chart-event-1', `• ${this.tr('chart_current_line', { value: latest.value.toFixed(1), unit: metric.unit, status: statusText.toLowerCase() })}`);
+        this.setSafeText('chart-event-2', `• ${this.tr('chart_peak_low_line', { peak: Math.max(...values).toFixed(1), low: Math.min(...values).toFixed(1), unit: metric.unit })}`);
+        this.setSafeText('chart-event-3', `• ${this.tr('chart_forecast_line', { value: projected.toFixed(1), unit: metric.unit })}`);
 
         container.innerHTML = `
             <svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
@@ -1613,13 +1727,13 @@ const App = {
 
     getZoneTrendGlyph: function (zoneId) {
         const history = MockAPI.zones[zoneId]?.history || [];
-        if (history.length < 2) return '→ stable';
+        if (history.length < 2) return `→ ${this.tr('zone_trend_stable')}`;
         const latest = history[history.length - 1].theta;
         const prev = history[history.length - 2].theta;
         const delta = latest - prev;
-        if (delta > 0.005) return '↗ rising';
-        if (delta < -0.005) return '↘ drying';
-        return '→ stable';
+        if (delta > 0.005) return `↗ ${this.tr('zone_trend_rising')}`;
+        if (delta < -0.005) return `↘ ${this.tr('zone_trend_drying')}`;
+        return `→ ${this.tr('zone_trend_stable')}`;
     },
 
     renderZoneGrid: function () {
@@ -1672,7 +1786,7 @@ const App = {
                 }
 
                 const vwcEl = cell.querySelector('.zone-vwc');
-                if (vwcEl) vwcEl.textContent = `${(zones[zoneId].latest.theta * 100).toFixed(0)}% moisture`;
+                if (vwcEl) vwcEl.textContent = `${(zones[zoneId].latest.theta * 100).toFixed(0)}%`;
                 const trendEl = cell.querySelector('.zone-trend');
                 if (trendEl) trendEl.textContent = this.getZoneTrendGlyph(zoneId);
             }
@@ -1736,8 +1850,8 @@ const App = {
 
         const zoneHistory = (MockAPI.zones[zoneId]?.history || []).slice(-180);
         if (zoneHistory.length < 2) {
-            container.innerHTML = `<div style="padding:14px;color:#68786f;font-size:0.9rem;">Waiting for more sensor data...</div>`;
-            if (summary) summary.textContent = 'Trend will appear after a few readings.';
+            container.innerHTML = `<div style="padding:14px;color:#68786f;font-size:0.9rem;">${this.tr('zone_waiting_data')}</div>`;
+            if (summary) summary.textContent = this.tr('zone_trend_after_readings');
             return;
         }
 
@@ -1766,7 +1880,7 @@ const App = {
         const latest = points[points.length - 1];
         const prev = points[points.length - 2];
         const trend = latest.value - prev.value;
-        const trendLabel = trend > 0.2 ? 'rising' : (trend < -0.2 ? 'drying' : 'stable');
+        const trendLabel = trend > 0.2 ? this.tr('zone_trend_rising') : (trend < -0.2 ? this.tr('zone_trend_drying') : this.tr('zone_trend_stable'));
         const color = latest.value < 15 ? '#E76F51' : (latest.value < 20 ? '#F4A261' : '#5F8D4E');
 
         container.innerHTML = `
@@ -1779,7 +1893,7 @@ const App = {
                 <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H - pad}" stroke="#b7c4be" />
             </svg>
         `;
-        if (summary) summary.textContent = `Current ${latest.value.toFixed(1)}% moisture · Trend: ${trendLabel}`;
+        if (summary) summary.textContent = this.tr('zone_current_trend', { value: latest.value.toFixed(1), trend: trendLabel });
     },
 
     selectZone: function (zoneId) {
@@ -1800,7 +1914,7 @@ const App = {
     toggleProblemFirst: function () {
         this.state.problemFirst = !this.state.problemFirst;
         const stateEl = document.getElementById('problem-first-state');
-        if (stateEl) stateEl.textContent = this.state.problemFirst ? 'On' : 'Off';
+        if (stateEl) stateEl.textContent = this.state.problemFirst ? this.tr('problem_first_on') : this.tr('problem_first_off');
         this.renderZoneGrid();
     },
 
