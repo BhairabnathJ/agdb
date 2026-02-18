@@ -164,8 +164,9 @@
 
             <div class="zone-legend">
                 <p style="font-size:14px; color:var(--neutral-600); margin-bottom:16px;">
-                    Select a zone to view detailed sensor data. Gray zones have no sensor.
+                    Select a field section to view detailed sensor data. Gray sections have no sensor.
                 </p>
+                <button class="btn-secondary" onclick="App.toggleProblemFirst()">Problem zones first: <span id="problem-first-state">Off</span></button>
                 <div class="legend-items">
                     <div class="legend-item">
                         <span class="legend-color" style="background:var(--status-healthy);"></span>
@@ -193,7 +194,7 @@
 
             <!-- Selected Zone Details -->
             <div id="zone-details" class="zone-details" style="display:none;">
-                <h3 class="font-h3" style="margin-bottom:12px;">Zone <span id="zone-name">--</span></h3>
+                <h3 class="font-h3" style="margin-bottom:12px;">Field Section: <span id="zone-name">--</span></h3>
                 <div class="metrics-grid-dense">
                     <div class="metric-cell">
                         <label>VWC</label>

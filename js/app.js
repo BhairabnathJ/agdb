@@ -85,6 +85,25 @@ const ZONE_CONFIG = {
     ]
 };
 
+const ZONE_LABELS = {
+    A1: 'North Orchard',
+    A2: 'North Ridge',
+    A3: 'North East',
+    A4: 'North Barn',
+    B1: 'West Terrace',
+    B2: 'Central West',
+    B3: 'Central Bed',
+    B4: 'East Terrace',
+    C1: 'Lower West',
+    C2: 'Lower Center',
+    C3: 'Lower East',
+    C4: 'South Canal',
+    D1: 'South West',
+    D2: 'South Center',
+    D3: 'South East',
+    D4: 'Gate Corner'
+};
+
 // =============================================================================
 // LOGGING SYSTEM
 // =============================================================================
@@ -856,6 +875,7 @@ const App = {
         currentView: 'home',
         currentSample: null,
         selectedZone: null,  // No zone selected by default
+        problemFirst: false,
         history: [],
         settings: {
             tempUnit: 'c',
@@ -1347,17 +1367,50 @@ const App = {
     },
 
     // --- ZONE GRID ---
+    getZoneOrder: function () {
+        const zones = MockAPI.getAllZones();
+        const sensors = [...ZONE_CONFIG.sensors];
+        if (!this.state.problemFirst) return sensors;
+
+        const urgencyWeight = { high: 0, medium: 1, low: 2 };
+        return sensors.sort((a, b) => {
+            const ua = zones[a.id]?.latest?.urgency || 'low';
+            const ub = zones[b.id]?.latest?.urgency || 'low';
+            const wa = urgencyWeight[ua] ?? 2;
+            const wb = urgencyWeight[ub] ?? 2;
+            if (wa !== wb) return wa - wb;
+            return a.id.localeCompare(b.id);
+        });
+    },
+
+    getZoneTrendGlyph: function (zoneId) {
+        const history = MockAPI.zones[zoneId]?.history || [];
+        if (history.length < 2) return '→ stable';
+        const latest = history[history.length - 1].theta;
+        const prev = history[history.length - 2].theta;
+        const delta = latest - prev;
+        if (delta > 0.005) return '↗ rising';
+        if (delta < -0.005) return '↘ drying';
+        return '→ stable';
+    },
+
     renderZoneGrid: function () {
         const container = document.getElementById('zone-grid');
         if (!container) return;
 
         container.innerHTML = '';
 
-        ZONE_CONFIG.sensors.forEach(sensor => {
+        this.getZoneOrder().forEach(sensor => {
             const cell = document.createElement('div');
             cell.className = 'zone-cell';
             cell.id = `zone-${sensor.id}`;
-            cell.textContent = sensor.id;
+            const zoneName = ZONE_LABELS[sensor.id] || sensor.id;
+            const shortName = zoneName.length > 14 ? `${zoneName.slice(0, 14)}…` : zoneName;
+            cell.innerHTML = `
+                <div class="zone-id">${shortName}</div>
+                <div class="zone-vwc">--</div>
+                <div class="zone-trend">--</div>
+            `;
 
             if (!sensor.active) {
                 cell.classList.add('inactive');
@@ -1389,6 +1442,11 @@ const App = {
                 if (zoneId === this.state.selectedZone) {
                     cell.classList.add('selected');
                 }
+
+                const vwcEl = cell.querySelector('.zone-vwc');
+                if (vwcEl) vwcEl.textContent = `${(zones[zoneId].latest.theta * 100).toFixed(0)}% moisture`;
+                const trendEl = cell.querySelector('.zone-trend');
+                if (trendEl) trendEl.textContent = this.getZoneTrendGlyph(zoneId);
             }
         });
     },
@@ -1416,7 +1474,7 @@ const App = {
 
         // Update zone name
         const nameEl = document.getElementById('zone-name');
-        if (nameEl) nameEl.textContent = this.state.selectedZone;
+        if (nameEl) nameEl.textContent = ZONE_LABELS[this.state.selectedZone] || this.state.selectedZone;
 
         // Update metrics
         const vwcEl = document.getElementById('zone-vwc');
@@ -1454,6 +1512,13 @@ const App = {
         if (detailsEl) detailsEl.style.display = 'none';
         this.updateZoneGridColors();
         Logger.log('ZONE', 'Cleared zone selection');
+    },
+
+    toggleProblemFirst: function () {
+        this.state.problemFirst = !this.state.problemFirst;
+        const stateEl = document.getElementById('problem-first-state');
+        if (stateEl) stateEl.textContent = this.state.problemFirst ? 'On' : 'Off';
+        this.renderZoneGrid();
     },
 
     // --- SIMULATIONS ---

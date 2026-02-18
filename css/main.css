@@ -536,11 +536,19 @@ body {
 .zone-id {
     font-weight: 700;
     font-size: 0.86rem;
+    text-align: center;
 }
 
 .zone-vwc {
     font-size: 0.76rem;
     color: var(--neutral-600);
+    text-align: center;
+}
+
+.zone-trend {
+    font-size: 0.72rem;
+    color: var(--neutral-600);
+    margin-top: 1px;
 }
 
 .zone-details {
