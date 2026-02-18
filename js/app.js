@@ -1171,33 +1171,44 @@ const App = {
 
     renderTier1: function () {
         const s = this.state.currentSample;
+        const greetingEl = document.getElementById('t1-greeting');
         const statusIcon = document.getElementById('t1-status-icon');
         const msgEl = document.getElementById('t1-message');
         const instrEl = document.getElementById('t1-instruction');
         const timeEl = document.getElementById('t1-time');
+        const moistureEl = document.getElementById('t1-glance-moisture');
+        const tempEl = document.getElementById('t1-glance-temp');
+        const zonesEl = document.getElementById('t1-glance-zones');
 
         if (!statusIcon || !msgEl) return;
 
         statusIcon.className = 'status-circle-large';
+        const hour = new Date().getHours();
+        let greeting = 'Good evening';
+        if (hour < 12) greeting = 'Good morning';
+        else if (hour < 17) greeting = 'Good afternoon';
+        if (greetingEl) greetingEl.textContent = `${greeting} 👋`;
 
         if (s.urgency === 'high') {
             statusIcon.classList.add('critical');
-            msgEl.textContent = I18n?.t('status_irrigate') || 'WATER YOUR CROPS';
-            instrEl.textContent = I18n?.t('action_irrigate', { hours: 2 }) || 'Irrigate now';
+            msgEl.textContent = 'Your field needs watering attention today.';
+            instrEl.textContent = 'Moisture is below target in at least one zone. Plan irrigation now.';
         } else if (s.urgency === 'medium') {
             statusIcon.classList.add('warning');
-            msgEl.textContent = I18n?.t('status_check') || 'CHECK FIELD SOON';
-            instrEl.textContent = I18n?.t('action_check') || 'Monitor moisture';
+            msgEl.textContent = 'Your field is stable, but a few areas are drying.';
+            instrEl.textContent = 'No emergency yet. Check again later today.';
         } else {
             statusIcon.classList.add('healthy');
-            msgEl.textContent = I18n?.t('status_good') || 'ALL GOOD';
-            instrEl.textContent = I18n?.t('action_good') || 'No action needed';
+            msgEl.textContent = 'Your field is looking healthy today.';
+            instrEl.textContent = 'Soil moisture is at good levels across your active zones.';
         }
 
         if (timeEl) {
-            timeEl.textContent = I18n?.t('updated', { time: new Date(s.timestamp * 1000).toLocaleTimeString() }) ||
-                `Updated: ${new Date(s.timestamp * 1000).toLocaleTimeString()}`;
+            timeEl.textContent = new Date(s.timestamp * 1000).toLocaleTimeString();
         }
+        if (moistureEl) moistureEl.textContent = s.status || 'Optimal';
+        if (tempEl) tempEl.textContent = `${s.temp_c.toFixed(1)}°C`;
+        if (zonesEl) zonesEl.textContent = `${Object.keys(MockAPI.zones || {}).length} sensors`;
     },
 
     renderTier2: function () {

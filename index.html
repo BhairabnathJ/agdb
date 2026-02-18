@@ -24,8 +24,9 @@
             </div>
 
             <!-- Primary Message -->
-            <h1 id="t1-message" class="hero-title">ALL GOOD</h1>
-            <p id="t1-instruction" class="hero-subtitle">No action needed</p>
+            <p id="t1-greeting" class="hero-kicker">Good afternoon 👋</p>
+            <h1 id="t1-message" class="hero-title">Your field is looking healthy today.</h1>
+            <p id="t1-instruction" class="hero-subtitle">Soil moisture is at good levels across your active zones.</p>
 
             <!-- Actions -->
             <div class="hero-actions">
@@ -33,8 +34,27 @@
                 <button class="btn-secondary btn-large" onclick="App.navigate('history')">Field Details</button>
             </div>
 
+            <div class="hero-glance">
+                <div class="glance-row">
+                    <span>💧 Moisture</span>
+                    <strong id="t1-glance-moisture">Optimal</strong>
+                </div>
+                <div class="glance-row">
+                    <span>🌡 Temperature</span>
+                    <strong id="t1-glance-temp">--°C</strong>
+                </div>
+                <div class="glance-row">
+                    <span>📍 Active Sensors</span>
+                    <strong id="t1-glance-zones">--</strong>
+                </div>
+                <div class="glance-row">
+                    <span>⏰ Last Checked</span>
+                    <strong id="t1-time">Just now</strong>
+                </div>
+            </div>
+
             <div class="hero-footer">
-                <span id="t1-time">Last updated: Just now</span>
+                <span id="t1-footer-note">Updates every few minutes</span>
                 <div style="margin-top:20px;">
                     <!-- Feature #7: Language Selector -->
                     <select id="lang-select-t1"

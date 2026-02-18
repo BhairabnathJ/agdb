@@ -131,6 +131,13 @@ body {
     margin: 0;
 }
 
+.hero-kicker {
+    text-align: center;
+    font-weight: 600;
+    color: var(--earth-600);
+    margin: 0;
+}
+
 .hero-subtitle {
     font-size: 1.05rem;
     line-height: 1.75;
@@ -153,6 +160,35 @@ body {
     text-align: center;
     color: var(--neutral-500);
     font-size: 0.94rem;
+}
+
+.hero-glance {
+    margin: var(--space-8) auto 0;
+    max-width: 480px;
+    border: 1px solid var(--neutral-200);
+    background: linear-gradient(160deg, #ffffff 0%, #f5faf7 100%);
+    border-radius: var(--radius-md);
+    padding: var(--space-5);
+    box-shadow: 0 12px 24px rgba(36, 49, 42, 0.08);
+}
+
+.glance-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    font-size: 0.95rem;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--neutral-200);
+}
+
+.glance-row:last-child {
+    border-bottom: 0;
+}
+
+.glance-row strong {
+    font-weight: 700;
+    color: var(--neutral-900);
 }
 
 .reasoning-card,
