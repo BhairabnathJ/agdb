@@ -61,48 +61,73 @@ const THRESHOLDS_STORE = {
     }
 };
 
-// Zone configuration for multi-sensor simulation
-const ZONE_CONFIG = {
-    rows: 4,
-    cols: 4,
-    sensors: [
-        { id: 'A1', row: 0, col: 0, active: true },
-        { id: 'A2', row: 0, col: 1, active: true },
-        { id: 'A3', row: 0, col: 2, active: false },
-        { id: 'A4', row: 0, col: 3, active: true },
-        { id: 'B1', row: 1, col: 0, active: true },
-        { id: 'B2', row: 1, col: 1, active: false },
-        { id: 'B3', row: 1, col: 2, active: true },
-        { id: 'B4', row: 1, col: 3, active: false },
-        { id: 'C1', row: 2, col: 0, active: false },
-        { id: 'C2', row: 2, col: 1, active: true },
-        { id: 'C3', row: 2, col: 2, active: false },
-        { id: 'C4', row: 2, col: 3, active: true },
-        { id: 'D1', row: 3, col: 0, active: false },
-        { id: 'D2', row: 3, col: 1, active: true },
-        { id: 'D3', row: 3, col: 2, active: true },
-        { id: 'D4', row: 3, col: 3, active: false }
-    ]
-};
+// Zone map is built dynamically from paired CropBand devices (Issue 8)
+// ZONE_CONFIG and ZONE_LABELS removed — zones come from buildZoneMapFromDevices()
 
-const ZONE_LABELS = {
-    A1: 'North Orchard',
-    A2: 'North Ridge',
-    A3: 'North East',
-    A4: 'North Barn',
-    B1: 'West Terrace',
-    B2: 'Central West',
-    B3: 'Central Bed',
-    B4: 'East Terrace',
-    C1: 'Lower West',
-    C2: 'Lower Center',
-    C3: 'Lower East',
-    C4: 'South Canal',
-    D1: 'South West',
-    D2: 'South Center',
-    D3: 'South East',
-    D4: 'Gate Corner'
-};
+async function buildZoneMapFromDevices() {
+    if (window.HARDWARE_MODE) {
+        try {
+            const res = await fetch('/api/devices');
+            if (!res.ok) throw new Error('devices API error');
+            const devices = await res.json();
+            const paired = devices.filter(d => d.paired === true);
+            if (paired.length === 0) return { empty: true, message: 'No CropBands paired yet.' };
+            return paired.map((d, i) => ({
+                id: d.mac || d.id || ('DEV' + i),
+                name: d.name || ('Zone ' + (i + 1)),
+                row: Math.floor(i / 4),
+                col: i % 4,
+                active: true,
+                battery: d.battery ?? 100,
+                lastSeen: d.last_seen || null
+            }));
+        } catch (e) {
+            Logger.log('ERROR', 'buildZoneMapFromDevices failed', e);
+            return { empty: true, message: 'Could not reach device API.' };
+        }
+    } else {
+        // Mock mode: derive zones from MockAPI.zones
+        const ids = Object.keys(MockAPI.zones);
+        if (ids.length === 0) return { empty: true, message: 'No CropBands paired yet.' };
+        return ids.map((id, i) => ({
+            id,
+            name: 'Zone ' + id,
+            row: MockAPI.zones[id].row ?? Math.floor(i / 4),
+            col: MockAPI.zones[id].col ?? (i % 4),
+            active: MockAPI.zones[id].active !== false,
+            battery: MockAPI.zones[id].battery ?? 100,
+            lastSeen: null
+        }));
+    }
+}
+
+// Standalone helper: hours until theta drops to theta_refill (Issue 4)
+function calcTimeToCritical(sample) {
+    if (!sample) return null;
+    const dr = sample.drying_rate || sample.dryingRate_per_hr || 0;
+    const theta = sample.theta;
+    const refill = sample.theta_refill;
+    if (!dr || dr <= 0 || theta == null || refill == null) return null;
+    const delta = theta - refill;
+    if (delta <= 0) return 0;
+    return delta / dr; // hours
+}
+
+// Irrigation duration helper (Issue 10)
+function calcIrrigationDuration(Dr_mm, flowRate_lpm) {
+    if (!Dr_mm || Dr_mm <= 0) return { text: 'No deficit', precise: null };
+    if (flowRate_lpm && flowRate_lpm > 0) {
+        const minutes = Dr_mm / flowRate_lpm * 1000; // Dr_mm * area / flow — simplified per mm
+        return {
+            text: `~${Math.ceil(minutes)} min`,
+            precise: minutes
+        };
+    }
+    // No flow rate — return range using 5–15 L/min typical
+    const minMins = Math.ceil(Dr_mm / 15 * 1000);
+    const maxMins = Math.ceil(Dr_mm / 5 * 1000);
+    return { text: `${minMins}–${maxMins} min (typical)`, precise: null };
+}
 
 // =============================================================================
 // LOGGING SYSTEM
@@ -198,9 +223,9 @@ const PhysicsEventLogger = {
      * Called after each sensor reading
      */
     checkForEvents: function (sample) {
-        if (!sample || typeof Physics === 'undefined') return;
+        if (!sample || typeof window.Physics === 'undefined') return;
 
-        const calState = Physics.autoCalibration?.getCalibrationState();
+        const calState = window.Physics?.autoCalibration?.getCalibrationState();
         if (!calState) return;
 
         const currentState = calState.state;
@@ -274,8 +299,26 @@ const MockAPI = {
     simulationLogs: [],
 
     init: function () {
-        // Initialize zones
-        ZONE_CONFIG.sensors.forEach(sensor => {
+        // Initialize zones from a default set for mock mode
+        const defaultSensors = [
+            { id: 'A1', row: 0, col: 0, active: true },
+            { id: 'A2', row: 0, col: 1, active: true },
+            { id: 'A3', row: 0, col: 2, active: false },
+            { id: 'A4', row: 0, col: 3, active: true },
+            { id: 'B1', row: 1, col: 0, active: true },
+            { id: 'B2', row: 1, col: 1, active: false },
+            { id: 'B3', row: 1, col: 2, active: true },
+            { id: 'B4', row: 1, col: 3, active: false },
+            { id: 'C1', row: 2, col: 0, active: false },
+            { id: 'C2', row: 2, col: 1, active: true },
+            { id: 'C3', row: 2, col: 2, active: false },
+            { id: 'C4', row: 2, col: 3, active: true },
+            { id: 'D1', row: 3, col: 0, active: false },
+            { id: 'D2', row: 3, col: 1, active: true },
+            { id: 'D3', row: 3, col: 2, active: true },
+            { id: 'D4', row: 3, col: 3, active: false }
+        ];
+        defaultSensors.forEach(sensor => {
             if (sensor.active) {
                 this.zones[sensor.id] = {
                     ...sensor,
@@ -291,12 +334,13 @@ const MockAPI = {
     inject: function (raw_adc, temp_c, zoneId = 'A1') {
         const ts = Math.floor(Date.now() / 1000);
 
-        if (typeof Physics === 'undefined' || !Physics.processSensorReading) {
-            Logger.log('ERROR', 'Physics engine not loaded or incompatible');
+        if (typeof window.PhysicsRegistry === 'undefined') {
+            Logger.log('ERROR', 'PhysicsRegistry not loaded');
             return null;
         }
 
-        const sample = Physics.processSensorReading(raw_adc, temp_c, ts);
+        const engine = window.PhysicsRegistry.getOrCreate(zoneId);
+        const sample = engine.processSensorReading(raw_adc, temp_c, ts);
 
         // Add zone info
         sample.zoneId = zoneId;
@@ -315,13 +359,13 @@ const MockAPI = {
 
         // Store in main DB
         this.db.push(sample);
-        if (this.db.length > 1000) this.db.shift();
+        if (this.db.length > 2880) this.db.shift();
 
         // Store in zone history
         if (this.zones[zoneId]) {
             this.zones[zoneId].history.push(sample);
             this.zones[zoneId].currentRaw = raw_adc;
-            if (this.zones[zoneId].history.length > 200) {
+            if (this.zones[zoneId].history.length > 2880) {
                 this.zones[zoneId].history.shift();
             }
         }
@@ -343,8 +387,9 @@ const MockAPI = {
                 raw += (Math.random() - 0.48) * 30; // Slight drying trend
                 raw = Math.max(300, Math.min(900, raw));
 
-                if (typeof Physics !== 'undefined' && Physics.processSensorReading) {
-                    const sample = Physics.processSensorReading(raw, 22 + Math.random() * 4, t);
+                if (typeof window.PhysicsRegistry !== 'undefined') {
+                    const engine = window.PhysicsRegistry.getOrCreate(zoneId);
+                    const sample = engine.processSensorReading(raw, 22 + Math.random() * 4, t);
                     sample.zoneId = zoneId;
                     sample.battery = this.zones[zoneId].battery;
                     this.db.push(sample);
@@ -435,8 +480,8 @@ const MockAPI = {
 
         // Get calibration state from physics engine
         let calibration = { status: 'Unknown', confidence: 0, events_captured: 0 };
-        if (typeof Physics !== 'undefined' && Physics.autoCalibration) {
-            const calState = Physics.autoCalibration.getCalibrationState();
+        if (typeof window.Physics !== 'undefined' && window.Physics.autoCalibration) {
+            const calState = window.Physics.autoCalibration.getCalibrationState();
             const conf = calState.confidence || 0;
             calibration = {
                 status: conf < 0.35 ? 'Learning' : conf < 0.65 ? 'Calibrating' : 'Calibrated',
@@ -522,6 +567,43 @@ const MockAPI = {
 };
 
 // =============================================================================
+// REAL HARDWARE API (Issue 6)
+// =============================================================================
+
+const RealAPI = {
+    getLatest: async function (zoneId = null) {
+        const url = zoneId ? `/api/current?zone=${encodeURIComponent(zoneId)}` : '/api/current';
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('RealAPI.getLatest failed');
+        return res.json();
+    },
+
+    getAllZones: async function () {
+        const res = await fetch('/api/devices');
+        if (!res.ok) throw new Error('RealAPI.getAllZones failed');
+        return res.json();
+    },
+
+    getSeries: async function (zoneId, hours = 24) {
+        const url = zoneId
+            ? `/api/series?zone=${encodeURIComponent(zoneId)}&hours=${hours}`
+            : `/api/series?hours=${hours}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('RealAPI.getSeries failed');
+        return res.json();
+    },
+
+    getDiagnostics: async function () {
+        const res = await fetch('/api/diagnostics');
+        if (!res.ok) throw new Error('RealAPI.getDiagnostics failed');
+        return res.json();
+    }
+};
+
+// Unified data source: hardware or mock (Issue 6)
+const DataSource = window.HARDWARE_MODE ? RealAPI : MockAPI;
+
+// =============================================================================
 // SIMULATION ENGINE
 // =============================================================================
 
@@ -541,8 +623,8 @@ const Simulator = {
         }
 
         // Enable simulation mode for faster calibration
-        if (typeof Physics !== 'undefined' && Physics.enableSimulationMode) {
-            Physics.enableSimulationMode();
+        if (typeof window.Physics !== 'undefined' && window.Physics.enableSimulationMode) {
+            window.Physics?.enableSimulationMode();
         }
 
         Logger.log('SIMULATION', '🌧️ Starting RAIN simulation');
@@ -603,8 +685,8 @@ const Simulator = {
         }
 
         // Enable simulation mode for faster calibration
-        if (typeof Physics !== 'undefined' && Physics.enableSimulationMode) {
-            Physics.enableSimulationMode();
+        if (typeof window.Physics !== 'undefined' && window.Physics.enableSimulationMode) {
+            window.Physics?.enableSimulationMode();
         }
 
         Logger.log('SIMULATION', '☀️ Starting DROUGHT simulation');
@@ -665,8 +747,8 @@ const Simulator = {
         }
 
         // Enable simulation mode for faster calibration
-        if (typeof Physics !== 'undefined' && Physics.enableSimulationMode) {
-            Physics.enableSimulationMode();
+        if (typeof window.Physics !== 'undefined' && window.Physics.enableSimulationMode) {
+            window.Physics?.enableSimulationMode();
         }
 
         const DURATION_MS = 10 * 60 * 1000; // 10 minutes
@@ -802,8 +884,8 @@ const Simulator = {
         this.running = false;
 
         // Disable simulation mode
-        if (typeof Physics !== 'undefined' && Physics.disableSimulationMode) {
-            Physics.disableSimulationMode();
+        if (typeof window.Physics !== 'undefined' && window.Physics.disableSimulationMode) {
+            window.Physics?.disableSimulationMode();
         }
 
         Logger.log('SIMULATION', `Simulation "${this.currentSim}" stopped`, {
@@ -899,27 +981,40 @@ const App = {
             I18n.init();
         }
 
-        // Initialize MockAPI
-        MockAPI.init();
+        if (!window.HARDWARE_MODE) {
+            // Mock mode: seed simulation data (Issue 3)
+            MockAPI.init();
+            await this.loadThresholdsData();
+            this.loadSettings();
 
-        await this.loadThresholdsData();
-        this.loadSettings();
+            // Set default planting date
+            if (!this.state.settings.plantingDate) {
+                const d = new Date();
+                d.setDate(d.getDate() - 45);
+                this.state.settings.plantingDate = d.toISOString().split('T')[0];
+            }
+            if (!this.state.settings.planting_ts && this.state.settings.plantingDate) {
+                this.state.settings.planting_ts = Math.floor(new Date(this.state.settings.plantingDate).getTime() / 1000);
+            }
 
-        // Set default planting date
-        if (!this.state.settings.plantingDate) {
-            const d = new Date();
-            d.setDate(d.getDate() - 45);
-            this.state.settings.plantingDate = d.toISOString().split('T')[0];
+            this.applyThresholdConfig();
+            this.persistCanonicalSettings();
+            MockAPI.seed();
+        } else {
+            // Hardware mode: load config from hub, no mock data (Issue 3)
+            await this.loadThresholdsData();
+            await this.loadPrefsFromHub();
+            this.applyThresholdConfig();
+            await this.initFromHardware();
+            this.startHardwarePolling();
         }
-        if (!this.state.settings.planting_ts && this.state.settings.plantingDate) {
-            this.state.settings.planting_ts = Math.floor(new Date(this.state.settings.plantingDate).getTime() / 1000);
+
+        // Issue 9: warn if onboarding incomplete
+        const prefs = await this.loadPrefsFromHub();
+        if (!prefs.onboarding_complete) {
+            this.showBanner('warning', 'Setup incomplete — some features may not work correctly.');
+            this.showBanner('info', 'Open Settings to complete your crop and soil configuration.');
         }
-
-        this.applyThresholdConfig();
-        this.persistCanonicalSettings();
-
-        // Seed initial data
-        MockAPI.seed();
 
         this.setupListeners();
         this.bindMobileGestures();
@@ -928,21 +1023,95 @@ const App = {
         this.syncBottomNav('home');
         this.updateData();
 
-        // Polling loop
-        setInterval(() => this.updateData(), 3000);
+        // Polling loop (mock mode)
+        if (!window.HARDWARE_MODE) {
+            setInterval(() => this.updateData(), 3000);
+        }
 
         Logger.log('UI', 'App initialization complete', {
-            zones: Object.keys(MockAPI.zones).length,
-            samples: MockAPI.db.length
+            hardware: !!window.HARDWARE_MODE,
+            zones: Object.keys(MockAPI.zones).length
         });
     },
 
+    // Issue 3: fetch current state from hardware on startup
+    initFromHardware: async function () {
+        try {
+            const data = await RealAPI.getLatest();
+            if (data) {
+                this.state.currentSample = data;
+            }
+        } catch (e) {
+            Logger.log('ERROR', 'initFromHardware failed', e);
+        }
+    },
+
+    // Issue 3: poll hardware at 15-minute intervals
+    startHardwarePolling: function () {
+        setInterval(() => this.updateData(), 15 * 60 * 1000);
+    },
+
+    // Issue 12: load prefs from hub (hardware) or localStorage (mock)
+    loadPrefsFromHub: async function () {
+        if (window.HARDWARE_MODE) {
+            try {
+                const res = await fetch('/api/config');
+                if (res.ok) {
+                    const data = await res.json();
+                    // cache locally for offline access
+                    try { localStorage.setItem('agriscan_user_prefs', JSON.stringify(data)); } catch (_) {}
+                    return this.normalizePrefs(data);
+                }
+            } catch (e) {
+                Logger.log('ERROR', 'loadPrefsFromHub failed, using cache', e);
+            }
+        }
+        // Fallback: read from localStorage
+        try {
+            const raw = localStorage.getItem('agriscan_user_prefs');
+            if (raw) return this.normalizePrefs(JSON.parse(raw));
+        } catch (_) {}
+        return { onboarding_complete: false };
+    },
+
+    // Issue 12: save prefs to hub (hardware) or localStorage (mock)
+    savePrefsToHub: async function (prefs) {
+        if (window.HARDWARE_MODE) {
+            try {
+                await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(prefs)
+                });
+                // also cache locally
+                try { localStorage.setItem('agriscan_user_prefs', JSON.stringify(prefs)); } catch (_) {}
+                return;
+            } catch (e) {
+                Logger.log('ERROR', 'savePrefsToHub failed', e);
+            }
+        }
+        try {
+            localStorage.setItem('agriscan_user_prefs', JSON.stringify(prefs));
+        } catch (e) {
+            Logger.log('ERROR', 'savePrefsToHub localStorage failed', e);
+        }
+    },
+
     updateData: async function () {
-        const sample = await MockAPI.getCurrent(this.state.selectedZone);
-        if (sample) {
-            this.state.currentSample = sample;
-            this.state.history = await MockAPI.getSeries(this.state.selectedZone);
-            this.render();
+        try {
+            const sample = window.HARDWARE_MODE
+                ? await DataSource.getLatest(this.state.selectedZone)
+                : await DataSource.getCurrent(this.state.selectedZone);
+            if (sample) {
+                this.state.currentSample = sample;
+                const series = window.HARDWARE_MODE
+                    ? await DataSource.getSeries(this.state.selectedZone)
+                    : await DataSource.getSeries(this.state.selectedZone);
+                this.state.history = series || [];
+                this.render();
+            }
+        } catch (e) {
+            Logger.log('ERROR', 'updateData failed', e);
         }
     },
 
@@ -1047,6 +1216,7 @@ const App = {
     },
 
     loadSettings: function () {
+        // Issue 12: read from localStorage cache (loadPrefsFromHub handles hardware vs mock)
         try {
             const canonicalRaw = localStorage.getItem('agriscan_user_prefs');
             const legacyRaw = localStorage.getItem('agriscan_settings');
@@ -1063,7 +1233,7 @@ const App = {
                 planting_ts: merged.planting_ts || this.state.settings.planting_ts,
                 flowRate: merged.flowRate ?? this.state.settings.flowRate
             };
-            Logger.log('UI', 'Settings loaded from localStorage');
+            Logger.log('UI', 'Settings loaded');
         } catch (e) {
             Logger.log('ERROR', 'Settings parse error', e);
         }
@@ -1093,6 +1263,7 @@ const App = {
     },
 
     persistCanonicalSettings: function () {
+        // Issue 12: use savePrefsToHub instead of direct localStorage
         const s = this.state.settings;
         const setupDate = Math.floor(Date.now() / 1000);
         const payload = {
@@ -1103,13 +1274,13 @@ const App = {
             soil: s.soil,
             setup_date: setupDate,
             planting_ts: s.planting_ts || setupDate,
-            farmer_name: '',
+            farmer_name: s.farmer_name || '',
             notes: '',
             plantingDate: s.plantingDate,
             flowRate: s.flowRate
         };
-        localStorage.setItem('agriscan_user_prefs', JSON.stringify(payload));
-        localStorage.removeItem('agriscan_settings');
+        this.savePrefsToHub(payload);
+        try { localStorage.removeItem('agriscan_settings'); } catch (_) {}
     },
 
     loadThresholdsData: async function () {
@@ -1156,8 +1327,21 @@ const App = {
         s.threshCritical = Math.round(thresholdConfig.theta_refill * 100);
         s.threshWarning = Math.round(thresholdConfig.theta_fc * 100);
 
-        if (typeof Physics !== 'undefined' && Physics.configureCropSoil) {
-            Physics.configureCropSoil({
+        // Configure all registered physics engines
+        if (typeof window.PhysicsRegistry !== 'undefined') {
+            const ids = window.PhysicsRegistry.listIds();
+            if (ids.length === 0) ids.push('HUB_ONBOARD');
+            ids.forEach(id => {
+                const eng = window.PhysicsRegistry.getOrCreate(id);
+                eng.configureCropSoil({
+                    crop: s.crop,
+                    soil: s.soil,
+                    planting_ts: s.planting_ts,
+                    ...thresholdConfig
+                });
+            });
+        } else if (typeof window.Physics !== 'undefined' && window.Physics.configureCropSoil) {
+            window.Physics.configureCropSoil({
                 crop: s.crop,
                 soil: s.soil,
                 planting_ts: s.planting_ts,
@@ -1736,22 +1920,6 @@ const App = {
     },
 
     // --- ZONE GRID ---
-    getZoneOrder: function () {
-        const zones = MockAPI.getAllZones();
-        const sensors = [...ZONE_CONFIG.sensors];
-        if (!this.state.problemFirst) return sensors;
-
-        const urgencyWeight = { high: 0, medium: 1, low: 2 };
-        return sensors.sort((a, b) => {
-            const ua = this.resolveUrgency(zones[a.id]?.latest);
-            const ub = this.resolveUrgency(zones[b.id]?.latest);
-            const wa = urgencyWeight[ua] ?? 2;
-            const wb = urgencyWeight[ub] ?? 2;
-            if (wa !== wb) return wa - wb;
-            return a.id.localeCompare(b.id);
-        });
-    },
-
     getZoneTrendGlyph: function (zoneId) {
         const history = MockAPI.zones[zoneId]?.history || [];
         if (history.length < 2) return `→ ${this.tr('zone_trend_stable')}`;
@@ -1763,17 +1931,31 @@ const App = {
         return `→ ${this.tr('zone_trend_stable')}`;
     },
 
-    renderZoneGrid: function () {
+    // Issue 8: zone grid now driven by buildZoneMapFromDevices()
+    renderZoneGrid: async function () {
         const container = document.getElementById('zone-grid');
         if (!container) return;
 
         container.innerHTML = '';
 
-        this.getZoneOrder().forEach(sensor => {
+        const result = await buildZoneMapFromDevices();
+
+        // Empty state (no paired devices)
+        if (result && result.empty) {
+            const msg = document.createElement('div');
+            msg.className = 'zone-empty-state';
+            msg.textContent = result.message || 'No CropBands paired yet.';
+            container.appendChild(msg);
+            Logger.log('ZONE', 'Zone grid: empty state');
+            return;
+        }
+
+        const sensors = Array.isArray(result) ? result : [];
+        sensors.forEach(sensor => {
             const cell = document.createElement('div');
             cell.className = 'zone-cell';
             cell.id = `zone-${sensor.id}`;
-            const zoneName = ZONE_LABELS[sensor.id] || sensor.id;
+            const zoneName = sensor.name || ('Zone ' + sensor.id);
             const shortName = zoneName.length > 14 ? `${zoneName.slice(0, 14)}…` : zoneName;
             cell.innerHTML = `
                 <div class="zone-id">${shortName}</div>
@@ -1843,7 +2025,7 @@ const App = {
 
         // Update zone name
         const nameEl = document.getElementById('zone-name');
-        if (nameEl) nameEl.textContent = ZONE_LABELS[this.state.selectedZone] || this.state.selectedZone;
+        if (nameEl) nameEl.textContent = 'Zone ' + (this.state.selectedZone || '—');
 
         // Update metrics
         const vwcEl = document.getElementById('zone-vwc');
@@ -2016,8 +2198,178 @@ const App = {
         window.location.href = 'diagnostics.html';
     },
 
+    // Issue 14: extended dev mode toggle
     toggleDevMode: function () {
-        document.body.classList.toggle('dev-mode');
+        const enabled = document.body.classList.toggle('dev-mode');
+        if (enabled) {
+            this.renderDevDashboard();
+        } else {
+            this.renderFarmerDashboard();
+        }
+    },
+
+    renderFarmerDashboard: function () {
+        const dev = document.getElementById('dev-dashboard');
+        if (dev) dev.style.display = 'none';
+    },
+
+    // Issue 14: render full developer dashboard
+    renderDevDashboard: function () {
+        const dev = document.getElementById('dev-dashboard');
+        if (!dev) return;
+        dev.style.display = 'block';
+
+        // Panel 1: Live sensor chart (Chart.js 24h scrolling)
+        const ctx = document.getElementById('dev-chart-canvas');
+        if (ctx && typeof Chart !== 'undefined') {
+            const history = this.state.history || [];
+            const labels = history.map(s => new Date(s.timestamp * 1000).toLocaleTimeString());
+            const thetaData = history.map(s => (s.theta * 100).toFixed(1));
+            {
+                if (this._devChart) this._devChart.destroy();
+                const calState = window.Physics?.autoCalibration?.getCalibrationState?.() || {};
+                const thetaFc = (calState.theta_fc_star || 0.31) * 100;
+                const thetaRefill = (calState.theta_refill_star || 0.21) * 100;
+                const thetaPwp = (this.state.settings.threshCritical || 14);
+                this._devChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: 'Soil VWC %',
+                            data: thetaData,
+                            borderColor: '#4CAF50',
+                            fill: false,
+                            tension: 0.3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            annotation: {
+                                annotations: {
+                                    fcLine: { type: 'line', yMin: thetaFc, yMax: thetaFc, borderColor: 'blue', borderDash: [4, 4], label: { content: 'FC', display: true } },
+                                    refillLine: { type: 'line', yMin: thetaRefill, yMax: thetaRefill, borderColor: 'orange', borderDash: [4, 4], label: { content: 'Refill', display: true } },
+                                    pwpLine: { type: 'line', yMin: thetaPwp, yMax: thetaPwp, borderColor: 'red', borderDash: [4, 4], label: { content: 'PWP', display: true } }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Panel 2: Calibration state
+        const calPanel = document.getElementById('dev-panel-calibration');
+        if (calPanel) {
+            const calState = window.Physics?.autoCalibration?.getCalibrationState?.() || {};
+            const conf = calState.confidence || 0;
+            const stage = conf < 0.35 ? 'Learning' : conf < 0.65 ? 'Calibrating' : 'Calibrated';
+            calPanel.innerHTML = `
+                <div class="dev-cal-stage">Stage: <strong>${stage}</strong></div>
+                <div class="dev-cal-bar-wrap"><div class="dev-cal-bar" style="width:${(conf*100).toFixed(0)}%"></div></div>
+                <div class="dev-cal-meta">Confidence: ${(conf*100).toFixed(1)}% &nbsp;|&nbsp; Events: ${calState.n_events||0} &nbsp;|&nbsp; FC updates: ${calState.n_fc_updates||0}</div>
+            `;
+        }
+
+        // Panel 3: Physics event log
+        const logPanel = document.getElementById('dev-panel-log');
+        if (logPanel) {
+            const events = typeof PhysicsEventLogger !== 'undefined' ? PhysicsEventLogger.getEvents() : [];
+            logPanel.innerHTML = events.length === 0
+                ? '<em>No physics events yet.</em>'
+                : events.slice(-50).map(e => `<div class="dev-log-entry">[${e.type}] ${e.message || JSON.stringify(e)}</div>`).join('');
+            logPanel.scrollTop = logPanel.scrollHeight;
+            const clearBtn = document.getElementById('dev-log-clear');
+            if (clearBtn) clearBtn.onclick = () => { if (typeof PhysicsEventLogger !== 'undefined') PhysicsEventLogger.clear?.(); this.renderDevDashboard(); };
+        }
+
+        // Panel 4: Per-device panel
+        const devicePanel = document.getElementById('dev-panel-devices');
+        if (devicePanel) {
+            const ids = window.PhysicsRegistry?.listIds?.() || ['HUB_ONBOARD'];
+            devicePanel.innerHTML = ids.map(id => {
+                const eng = window.PhysicsRegistry?.get(id);
+                const cal = eng?.autoCalibration?.getCalibrationState?.() || {};
+                return `<div class="dev-device-row"><strong>${id}</strong> — conf: ${((cal.confidence||0)*100).toFixed(0)}% events: ${cal.n_events||0}</div>`;
+            }).join('');
+        }
+
+        // Panel 5: Storage panel
+        this.renderStoragePanel();
+    },
+
+    // Issue 13: storage management panel
+    renderStoragePanel: async function () {
+        const panel = document.getElementById('dev-panel-storage');
+        if (!panel) return;
+
+        if (!window.HARDWARE_MODE) {
+            panel.innerHTML = '<em>Storage panel available in hardware mode only.</em>';
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/storage');
+            if (!res.ok) throw new Error('storage API error');
+            const data = await res.json();
+            const pct = data.total_mb > 0 ? Math.round(data.used_mb / data.total_mb * 100) : 0;
+            const warnClass = pct >= 95 ? 'storage-danger' : pct >= 80 ? 'storage-warn' : '';
+            panel.innerHTML = `
+                <div class="dev-storage-bar-wrap ${warnClass}">
+                    <div class="dev-storage-bar" style="width:${pct}%"></div>
+                </div>
+                <div class="dev-storage-meta">${data.used_mb.toFixed(1)} MB used / ${data.free_mb.toFixed(1)} MB free (${pct}%)</div>
+                ${pct >= 80 ? `<div class="dev-storage-warning ${pct >= 95 ? 'danger' : 'warn'}">${pct >= 95 ? '⚠️ Critical: SD card nearly full!' : '⚠️ SD card usage above 80%'}</div>` : ''}
+                <div class="dev-storage-actions">
+                    <button onclick="App.downloadLogs()">Download Logs</button>
+                    <button onclick="App.clearLogs()">Clear Logs</button>
+                </div>
+            `;
+        } catch (e) {
+            panel.innerHTML = `<em>Storage unavailable: ${e.message}</em>`;
+        }
+    },
+
+    downloadLogs: async function () {
+        if (window.HARDWARE_MODE) {
+            window.location.href = '/api/logs/download';
+        } else {
+            const data = MockAPI.db.map(s => `${s.timestamp},${s.theta},${s.status}`).join('\n');
+            const blob = new Blob(['timestamp,theta,status\n' + data], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'agriscan_logs.csv';
+            a.click();
+        }
+    },
+
+    clearLogs: async function () {
+        if (!confirm('Clear all sensor logs? This cannot be undone.')) return;
+        if (window.HARDWARE_MODE) {
+            try {
+                await fetch('/api/logs/clear', { method: 'DELETE' });
+                this.renderStoragePanel();
+            } catch (e) {
+                Logger.log('ERROR', 'clearLogs failed', e);
+            }
+        } else {
+            MockAPI.db = [];
+            Logger.log('DATA', 'Mock logs cleared');
+        }
+    },
+
+    showBanner: function (type, message) {
+        // Issue 9: display informational banners
+        const container = document.getElementById('banner-container') || document.body;
+        const banner = document.createElement('div');
+        banner.className = `app-banner app-banner-${type}`;
+        banner.textContent = message;
+        const close = document.createElement('button');
+        close.textContent = '×';
+        close.onclick = () => banner.remove();
+        banner.appendChild(close);
+        container.insertBefore(banner, container.firstChild);
     },
 
     resetSimulationState: function () {
@@ -2114,7 +2466,7 @@ const App = {
     },
 
     cycleZone: function (direction) {
-        const activeIds = ZONE_CONFIG.sensors.filter((s) => s.active).map((s) => s.id);
+        const activeIds = Object.keys(MockAPI.zones);
         if (activeIds.length === 0) return;
         const currentIdx = this.state.selectedZone ? activeIds.indexOf(this.state.selectedZone) : 0;
         const nextIdx = ((currentIdx + direction) % activeIds.length + activeIds.length) % activeIds.length;

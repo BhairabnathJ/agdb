@@ -6,9 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AgriScan Dashboard</title>
     <link rel="stylesheet" href="/css/main.css">
-    <script src="/js/physics.js"></script>
-    <script src="/js/i18n.js"></script>
-    <script src="/js/app.js"></script>
 
 </head>
 
@@ -385,8 +382,61 @@
         <button id="nav-settings" class="nav-item" onclick="App.navigate('settings')">Settings</button>
     </nav>
 
+    <!-- Issue 14: Developer Dashboard (hidden by default, shown via .dev-mode class / Ctrl+Shift+D) -->
+    <div id="dev-dashboard" style="display:none; padding:16px; background:#1a1a2e; color:#eee; font-size:13px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <strong style="font-size:16px;">Dev Dashboard</strong>
+            <button onclick="App.toggleDevMode()" style="background:#333; color:#eee; border:none; padding:4px 10px; border-radius:4px; cursor:pointer;">Hide</button>
+        </div>
+
+        <!-- Panel 1: Live Sensor Chart -->
+        <div class="dev-panel" id="dev-panel-chart-wrap" style="background:#0f0f23; border-radius:8px; padding:12px; margin-bottom:12px;">
+            <div style="font-weight:600; margin-bottom:8px;">Live Soil VWC (24h)</div>
+            <canvas id="dev-chart-canvas" height="120"></canvas>
+        </div>
+
+        <!-- Panel 2: Calibration State -->
+        <div class="dev-panel" style="background:#0f0f23; border-radius:8px; padding:12px; margin-bottom:12px;">
+            <div style="font-weight:600; margin-bottom:8px;">Calibration State</div>
+            <div id="dev-panel-calibration">Loading...</div>
+        </div>
+
+        <!-- Panel 3: Physics Event Log -->
+        <div class="dev-panel" style="background:#0f0f23; border-radius:8px; padding:12px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between;">
+                <span style="font-weight:600;">Physics Event Log</span>
+                <button id="dev-log-clear" style="font-size:11px; background:#333; color:#ccc; border:none; border-radius:3px; padding:2px 8px; cursor:pointer;">Clear</button>
+            </div>
+            <div id="dev-panel-log" style="max-height:120px; overflow-y:auto; margin-top:8px; font-family:monospace; font-size:11px;"></div>
+        </div>
+
+        <!-- Panel 4: Per-Device Panel -->
+        <div class="dev-panel" style="background:#0f0f23; border-radius:8px; padding:12px; margin-bottom:12px;">
+            <div style="font-weight:600; margin-bottom:8px;">Per-Device Engines</div>
+            <div id="dev-panel-devices">Loading...</div>
+        </div>
+
+        <!-- Panel 5: Storage Panel -->
+        <div class="dev-panel" style="background:#0f0f23; border-radius:8px; padding:12px; margin-bottom:12px;">
+            <div style="font-weight:600; margin-bottom:8px;">SD Card Storage</div>
+            <div id="dev-panel-storage">Loading...</div>
+        </div>
+
+        <!-- Panel 6: Preview Farmer View -->
+        <div class="dev-panel" style="background:#0f0f23; border-radius:8px; padding:12px;">
+            <button onclick="App.renderFarmerDashboard(); App.navigate('home');" style="width:100%; background:#4CAF50; color:#fff; border:none; padding:10px; border-radius:6px; cursor:pointer; font-size:14px;">Preview Farmer View</button>
+        </div>
+    </div>
+
     <script src="js/physics.js"></script>
     <script src="js/i18n.js"></script>
+    <script>
+        // Issue 3: detect hardware mode via query param
+        (function () {
+            const params = new URLSearchParams(window.location.search);
+            window.HARDWARE_MODE = params.get('hardware') === 'true';
+        })();
+    </script>
     <script>
         (function () {
             try {
@@ -408,6 +458,15 @@
     </script>
 
     <script src="js/app.js"></script>
+    <script>
+        // Issue 14: Ctrl+Shift+D toggles dev dashboard
+        document.addEventListener('keydown', function (e) {
+            if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+                e.preventDefault();
+                if (typeof App !== 'undefined') App.toggleDevMode();
+            }
+        });
+    </script>
 </body>
 
 </html>

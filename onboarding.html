@@ -305,6 +305,12 @@
                 <h1 class="wizard-title" style="font-size:22px;">Device Setup</h1>
             </div>
             <div class="wizard-content">
+                <!-- Issue 9: farmer name field -->
+                <div class="form-group">
+                    <label class="form-label">Your Name</label>
+                    <input type="text" class="form-input" id="farmer-name" placeholder="e.g., Ali Hassan">
+                </div>
+
                 <div class="form-group">
                     <label class="form-label">Device Name</label>
                     <input type="text" class="form-input" id="device-name" placeholder="e.g., North Field Sensor">
@@ -341,10 +347,23 @@
                         <option value="loam">Normal / Mixed</option>
                     </select>
                 </div>
+
+                <!-- Issue 9: separate planting date field -->
+                <div class="form-group">
+                    <label class="form-label">Planting Date <span style="color:#888;font-weight:400;">(must be in the past)</span></label>
+                    <input type="date" class="form-input" id="planting-date" max="">
+                </div>
+
+                <!-- Issue 10: optional flow rate -->
+                <div class="form-group">
+                    <label class="form-label">Flow Rate (L/min) <span style="color:#888;font-weight:400;">(optional)</span></label>
+                    <input type="number" class="form-input" id="flow-rate" placeholder="Leave blank if unknown" min="0" step="0.1">
+                </div>
             </div>
+            <div id="setup-error" style="color:#c0392b; font-size:13px; padding:0 4px 8px; display:none;"></div>
             <div class="wizard-footer">
                 <button class="btn-wizard btn-back" onclick="nextStep(1)">← Back</button>
-                <button class="btn-wizard btn-next" onclick="nextStep(3)">Next →</button>
+                <button class="btn-wizard btn-next" onclick="validateAndAdvance()">Next →</button>
             </div>
         </div>
 
@@ -459,10 +478,55 @@
             }
         }
 
+        // Issue 9: validate before advancing from step 2
+        function validateAndAdvance() {
+            const errEl = document.getElementById('setup-error');
+            errEl.style.display = 'none';
+
+            const cropVal = document.getElementById('crop-type').value;
+            const soilVal = document.getElementById('soil-type').value;
+            const plantingDateVal = document.getElementById('planting-date').value;
+
+            const allowedCrops = thresholdsData ? Object.keys(thresholdsData.crops || {}) : ['tomato'];
+            const allowedSoils = thresholdsData ? Object.keys(thresholdsData.soils || {}) : ['loam'];
+
+            if (!cropVal || !allowedCrops.includes(cropVal)) {
+                errEl.textContent = 'Please select a valid crop type.';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (!soilVal || !allowedSoils.includes(soilVal)) {
+                errEl.textContent = 'Please select a valid soil type.';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (plantingDateVal) {
+                const plantingTs = Math.floor(Date.parse(plantingDateVal) / 1000);
+                if (plantingTs >= Math.floor(Date.now() / 1000)) {
+                    errEl.textContent = 'Planting date must be in the past.';
+                    errEl.style.display = 'block';
+                    return;
+                }
+            }
+
+            nextStep(3);
+        }
+
         function completeSetup() {
             const nowTs = Math.floor(Date.now() / 1000);
 
-            // Gather form data
+            // Issue 9: use separate planting date, not setup date
+            const plantingDateVal = document.getElementById('planting-date').value;
+            const plantingTs = plantingDateVal
+                ? Math.floor(Date.parse(plantingDateVal) / 1000)
+                : nowTs;
+
+            // Issue 10: optional flow rate
+            const flowRateInput = document.getElementById('flow-rate');
+            const flowRate = flowRateInput && flowRateInput.value !== ''
+                ? parseFloat(flowRateInput.value)
+                : null;
+
             const config = {
                 onboarding_complete: true,
                 device_name: document.getElementById('device-name').value || 'AgriScan Sensor',
@@ -470,17 +534,16 @@
                 crop: document.getElementById('crop-type').value,
                 soil: document.getElementById('soil-type').value,
                 setup_date: nowTs,
-                planting_ts: nowTs,
-                farmer_name: '',
+                planting_ts: plantingTs,
+                farmer_name: document.getElementById('farmer-name').value || '',
+                flow_rate_lpm: flowRate,
                 notes: ''
             };
 
-            // Save to localStorage (simulating ESP32 API)
+            // Save to localStorage (simulating ESP32 API in mock mode)
             localStorage.setItem('agriscan_user_prefs', JSON.stringify(config));
 
             console.log('Setup complete:', config);
-
-            // Show completion step
             nextStep(4);
         }
 
@@ -500,6 +563,12 @@
         });
 
         loadThresholdOptions();
+
+        // Set max planting date to today
+        const plantingDateInput = document.getElementById('planting-date');
+        if (plantingDateInput) {
+            plantingDateInput.max = new Date().toISOString().split('T')[0];
+        }
     </script>
 </body>
 

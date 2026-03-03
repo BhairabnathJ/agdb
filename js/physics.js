@@ -1,12 +1,18 @@
 /**
  * AgriScan Physics Engine
- * 
+ *
  * Implements soil-water physics, auto-calibration, and decision logic
  * Based on: van Genuchten (1980), FAO-56, Celia et al. (1990)
- * 
+ *
  * @version 1.0.0
  * @author Alex Jamkatel, Unity Provisions
  */
+
+if (typeof window !== 'undefined' && window.__agriscanPhysicsLoaded) {
+    console.warn('[Physics] Already loaded — skipping re-init');
+} else {
+
+if (typeof window !== 'undefined') window.__agriscanPhysicsLoaded = true;
 
 // =============================================================================
 // CONFIGURATION & CONSTANTS
@@ -997,6 +1003,76 @@ class AutoCalibration {
 }
 
 // =============================================================================
+// KALMAN FILTERS
+// =============================================================================
+
+class KalmanFilter1D {
+    constructor(Q = 0.001, R = 0.5) {
+        this.Q = Q; // process noise
+        this.R = R; // measurement noise
+        this.x = null; // state estimate
+        this.P = 1;   // estimate covariance
+    }
+
+    update(measurement) {
+        if (this.x === null) {
+            this.x = measurement;
+            return measurement;
+        }
+        // Predict
+        this.P += this.Q;
+        // Update
+        const K = this.P / (this.P + this.R);
+        this.x += K * (measurement - this.x);
+        this.P *= (1 - K);
+        return this.x;
+    }
+}
+
+class KalmanFilter2D {
+    constructor(Q = 0.001, R = 0.05, dt = 900) {
+        this.Q = Q;
+        this.R = R;
+        this.dt = dt; // time step in seconds
+        // State: [value, rate]
+        this.x = null;
+        // 2x2 covariance matrix (stored as flat [p00,p01,p10,p11])
+        this.P = [1, 0, 0, 1];
+    }
+
+    update(measurement) {
+        if (this.x === null) {
+            this.x = [measurement, 0];
+            return [measurement, 0];
+        }
+        const dt = this.dt;
+        // Predict
+        const xp = [this.x[0] + this.x[1] * dt, this.x[1]];
+        const [p00, p01, p10, p11] = this.P;
+        // F = [[1,dt],[0,1]], Q_mat adds Q to diagonal
+        const Pp00 = p00 + dt * p10 + dt * (p01 + dt * p11) + this.Q;
+        const Pp01 = p01 + dt * p11;
+        const Pp10 = p10 + dt * p11;
+        const Pp11 = p11 + this.Q;
+        // Innovation variance (only value is measured: H=[1,0])
+        const S = Pp00 + this.R;
+        // Kalman gain
+        const K0 = Pp00 / S;
+        const K1 = Pp10 / S;
+        // Update state
+        const innov = measurement - xp[0];
+        this.x = [xp[0] + K0 * innov, xp[1] + K1 * innov];
+        // Update covariance
+        this.P = [
+            Pp00 - K0 * Pp00, Pp01 - K0 * Pp01,
+            Pp10 - K1 * Pp00, Pp11 - K1 * Pp01
+        ];
+        // Return [smoothed_value, rate_per_second]
+        return [this.x[0], this.x[1]];
+    }
+}
+
+// =============================================================================
 // MAIN PHYSICS ENGINE
 // =============================================================================
 
@@ -1014,6 +1090,10 @@ class PhysicsEngine {
 
         this.history = []; // Store processed data points
         this.maxHistoryLength = 2880; // 30 days at 15-min intervals
+
+        // Kalman filters for sensor smoothing
+        this.kalmMoisture = new KalmanFilter2D(0.001, 0.05);
+        this.kalmTemp = new KalmanFilter1D(0.001, 0.5);
     }
 
     configureCropSoil(config = {}) {
@@ -1050,16 +1130,66 @@ class PhysicsEngine {
         }
     }
 
+    exportState() {
+        const cal = this.autoCalibration;
+        return {
+            version: 1,
+            autoCalibration: {
+                theta_fc_star: cal.theta_fc_star,
+                theta_refill_star: cal.theta_refill_star,
+                n_events: cal.n_events,
+                n_fc_updates: cal.n_fc_updates,
+                confidence: cal.confidence,
+                stage: cal.stage
+            },
+            dynamicsModel: {
+                drying_rate_ema: this.dynamicsModel.drying_rate_ema,
+                last_theta: this.dynamicsModel.last_theta,
+                last_ts: this.dynamicsModel.last_ts
+            }
+        };
+    }
+
+    importState(s) {
+        if (!s || s.version !== 1) return false;
+        try {
+            const cal = this.autoCalibration;
+            if (s.autoCalibration) {
+                const a = s.autoCalibration;
+                if (a.theta_fc_star != null)    cal.theta_fc_star = a.theta_fc_star;
+                if (a.theta_refill_star != null) cal.theta_refill_star = a.theta_refill_star;
+                if (a.n_events != null)          cal.n_events = a.n_events;
+                if (a.n_fc_updates != null)      cal.n_fc_updates = a.n_fc_updates;
+                if (a.confidence != null)        cal.confidence = a.confidence;
+                if (a.stage != null)             cal.stage = a.stage;
+            }
+            if (s.dynamicsModel) {
+                const d = s.dynamicsModel;
+                if (d.drying_rate_ema != null) this.dynamicsModel.drying_rate_ema = d.drying_rate_ema;
+                if (d.last_theta != null)      this.dynamicsModel.last_theta = d.last_theta;
+                if (d.last_ts != null)         this.dynamicsModel.last_ts = d.last_ts;
+            }
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
     /**
      * Process new sensor reading
      * This is the main entry point
      */
     processSensorReading(raw, temp_c, timestamp = Date.now()) {
-        // Step 1: Calibrate raw reading to VWC
-        const theta = this.calibration.calibrate(raw, temp_c);
+        // Step 0: Kalman smoothing on raw sensor inputs
+        const smoothedTemp = this.kalmTemp.update(temp_c);
+        const rawTheta = this.calibration.calibrate(raw, temp_c);
+        const [smoothedTheta] = this.kalmMoisture.update(rawTheta);
+
+        // Step 1: Calibrate raw reading to VWC (use smoothed values downstream)
+        const theta = smoothedTheta;
 
         // Step 2: Quality control
-        const qc = this.calibration.qualityControl(theta, temp_c, this.history);
+        const qc = this.calibration.qualityControl(theta, smoothedTemp, this.history);
 
         // Step 3: Create data point
         const dataPoint = {
@@ -1683,29 +1813,42 @@ if (typeof window !== 'undefined') {
 }
 
 // =============================================================================
-// ADAPTER FOR FIRMWARE COMPATIBILITY (main.cpp)
+// PHYSICS REGISTRY — per-zone engine management
 // =============================================================================
 
-// Ensure the global 'Physics' object exists as expected by main.cpp
-// Runtime consumers call: Physics.processSensorReading(raw, temp, ts)
+const PhysicsRegistry = {
+    _instances: {},
 
-if (typeof window !== 'undefined' && window.AgriScanPhysics) {
-    // Instantiate the engine
-    window.Physics = new window.AgriScanPhysics.PhysicsEngine();
+    getOrCreate: function (zoneId) {
+        if (!this._instances[zoneId]) {
+            this._instances[zoneId] = new PhysicsEngine();
+            console.log(`[PhysicsRegistry] New instance for ${zoneId}`);
+        }
+        return this._instances[zoneId];
+    },
 
-    // Add legacy helpers if app.js still uses them (it shouldn't, but safe to have)
-    window.Physics.calculateVPD = function (t, h) { return 0.5; };
-    window.Physics.calculateET0 = function (t) { return 4.5; };
-    window.Physics.calculateDryingRate = function (m, t) { return 0.2; };
-    window.Physics.decideAction = function (m, c, w) { return 'ALL_GOOD'; };
-    window.Physics.calculateTimeToCritical = function (m, c, r) { return 12; };
+    get: function (zoneId) {
+        return this._instances[zoneId] || null;
+    },
 
-    console.log("Physics Adapter: 'Physics' global initialized for Firmware/App compatibility.");
+    listIds: function () {
+        return Object.keys(this._instances);
+    },
+
+    remove: function (zoneId) {
+        delete this._instances[zoneId];
+    }
+};
+
+if (typeof window !== 'undefined') {
+    window.PhysicsRegistry = PhysicsRegistry;
+    // Default hub-onboard engine for backwards compatibility
+    window.Physics = PhysicsRegistry.getOrCreate('HUB_ONBOARD');
 }
 
 // For Duktape (where window might not exist but we want global)
 if (typeof window === 'undefined' && typeof PhysicsEngine !== 'undefined') {
-    // In Duktape environment where classes are global
-    // We export a global Physics object
     var Physics = new PhysicsEngine();
 }
+
+} // end load guard
