@@ -22,13 +22,16 @@ bool DBManager::init() {
 
   // 2. Enable WAL Mode (Critical for crash safety)
   executeSQL("PRAGMA journal_mode=WAL;");
-  executeSQL("PRAGMA synchronous=NORMAL;"); // Faster writes, still safe in WAL
+  executeSQL("PRAGMA synchronous=NORMAL;");
 
-  // 3. Create Tables (Idempotent)
+  // 3. Create Tables
+  // NOTE: id is AUTOINCREMENT primary key — timestamp is NOT unique
+  // Multiple readings per second are allowed (sensor loop runs fast)
   const char *tableSQL =
       "CREATE TABLE IF NOT EXISTS samples ("
-      "timestamp INTEGER PRIMARY KEY, raw_adc INTEGER, temp_c REAL, theta "
-      "REAL, "
+      "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+      "timestamp INTEGER NOT NULL, "
+      "raw_adc INTEGER, temp_c REAL, theta REAL, "
       "theta_fc REAL, theta_refill REAL, psi_kpa REAL, aw_mm REAL, "
       "fraction_depleted REAL, drying_rate REAL, regime TEXT, status TEXT, "
       "urgency TEXT, confidence REAL, qc_valid INTEGER, seq INTEGER);"
@@ -47,8 +50,14 @@ bool DBManager::init() {
 }
 
 bool DBManager::prepareStatements() {
-  const char *sql = "INSERT INTO samples VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                    "?, ?, ?, ?, ?, ?)";
+  // Explicitly list columns — id is excluded, SQLite fills it automatically
+  const char *sql =
+      "INSERT INTO samples "
+      "(timestamp, raw_adc, temp_c, theta, theta_fc, theta_refill, "
+      "psi_kpa, aw_mm, fraction_depleted, drying_rate, regime, "
+      "status, urgency, confidence, qc_valid, seq) "
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
   int rc = sqlite3_prepare_v2(db, sql, -1, &insertStmt, nullptr);
   if (rc != SQLITE_OK) {
     Serial.printf("Prepare Error: %s\n", sqlite3_errmsg(db));
@@ -66,6 +75,9 @@ bool DBManager::writeSampleBatch(std::vector<SampleData> &samples) {
   for (const auto &s : samples) {
     sqlite3_reset(insertStmt);
 
+    // Binds map to: timestamp=1, raw_adc=2, temp_c=3, theta=4, theta_fc=5,
+    // theta_refill=6, psi_kpa=7, aw_mm=8, fraction_depleted=9, drying_rate=10,
+    // regime=11, status=12, urgency=13, confidence=14, qc_valid=15, seq=16
     sqlite3_bind_int64(insertStmt, 1, s.timestamp);
     sqlite3_bind_int(insertStmt, 2, s.raw_adc);
     sqlite3_bind_double(insertStmt, 3, s.temp_c);
@@ -99,14 +111,29 @@ SampleData DBManager::getLatestSample() {
 
   if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
     if (sqlite3_step(stmt) == SQLITE_ROW) {
-      s.timestamp = sqlite3_column_int64(stmt, 0);
-      s.theta = sqlite3_column_double(stmt, 3);
-      s.temp_c = sqlite3_column_double(stmt, 2);
-      s.status = String((const char *)sqlite3_column_text(stmt, 11));
-      s.confidence = sqlite3_column_double(stmt, 13);
-      s.psi_kpa = sqlite3_column_double(stmt, 6);
-      s.aw_mm = sqlite3_column_double(stmt, 7);
-      s.urgency = String((const char *)sqlite3_column_text(stmt, 12));
+      // Column offsets shifted by 1 due to id being column 0
+      // col 0: id, col 1: timestamp, col 2: raw_adc, col 3: temp_c,
+      // col 4: theta, col 5: theta_fc, col 6: theta_refill, col 7: psi_kpa,
+      // col 8: aw_mm, col 9: fraction_depleted, col 10: drying_rate,
+      // col 11: regime, col 12: status, col 13: urgency, col 14: confidence,
+      // col 15: qc_valid, col 16: seq
+      s.id = sqlite3_column_int(stmt, 0);
+      s.timestamp = sqlite3_column_int64(stmt, 1);
+      s.raw_adc = sqlite3_column_int(stmt, 2);
+      s.temp_c = sqlite3_column_double(stmt, 3);
+      s.theta = sqlite3_column_double(stmt, 4);
+      s.theta_fc = sqlite3_column_double(stmt, 5);
+      s.theta_refill = sqlite3_column_double(stmt, 6);
+      s.psi_kpa = sqlite3_column_double(stmt, 7);
+      s.aw_mm = sqlite3_column_double(stmt, 8);
+      s.fraction_depleted = sqlite3_column_double(stmt, 9);
+      s.drying_rate = sqlite3_column_double(stmt, 10);
+      s.regime = String((const char *)sqlite3_column_text(stmt, 11));
+      s.status = String((const char *)sqlite3_column_text(stmt, 12));
+      s.urgency = String((const char *)sqlite3_column_text(stmt, 13));
+      s.confidence = sqlite3_column_double(stmt, 14);
+      s.qc_valid = sqlite3_column_int(stmt, 15) != 0;
+      s.seq = sqlite3_column_int(stmt, 16);
     }
   }
   sqlite3_finalize(stmt);
