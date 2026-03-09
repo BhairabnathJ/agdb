@@ -11,6 +11,7 @@
 #include "physics_engine.h"
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <DHT.h>
 #include <DallasTemperature.h>
 #include <ESPAsyncWebServer.h>
 #include <OneWire.h>
@@ -25,6 +26,8 @@
 
 #define SOIL_PIN 34
 #define TEMP_PIN 4
+#define DHT_PIN  16
+#define DHT_TYPE DHT22
 #define SD_CS 5 // Change if your CS pin is different
 
 // =============================================================================
@@ -36,6 +39,7 @@ DBManager dbManager("/sd/agriscan.db");
 
 OneWire oneWire(TEMP_PIN);
 DallasTemperature tempSensor(&oneWire);
+DHT dht(DHT_PIN, DHT_TYPE);
 
 std::vector<SampleData> sampleBuffer;
 const int BATCH_SIZE = 6;
@@ -393,6 +397,14 @@ void setup() {
     Serial.println("❌ DS18B20 NOT found — check wiring + 4.7kΩ pullup");
   }
 
+  dht.begin();
+  float testH = dht.readHumidity();
+  if (!isnan(testH)) {
+    Serial.println("✅ DHT22 CONNECTED — Humidity: " + String(testH, 1) + "%");
+  } else {
+    Serial.println("❌ DHT22 NOT found — check wiring on GPIO 16");
+  }
+
   // SD card
   if (!SD.begin(SD_CS)) {
     Serial.println("❌ SD card FAILED — check wiring and CS pin");
@@ -447,8 +459,12 @@ void setup() {
     SampleData s = dbManager.getLatestSample();
     String json = "{";
     json += "\"timestamp\":" + String(s.timestamp) + ",";
+    json += "\"raw_adc\":" + String(s.raw_adc) + ",";
+    json += "\"temp_c\":" + String(s.temp_c, 1) + ",";
+    json += "\"humidity\":" + String(s.humidity, 1) + ",";
     json += "\"theta\":" + String(s.theta, 4) + ",";
     json += "\"psi_kpa\":" + String(s.psi_kpa, 2) + ",";
+    json += "\"aw_mm\":" + String(s.aw_mm, 1) + ",";
     json += "\"status\":\"" + s.status + "\",";
     json += "\"urgency\":\"" + s.urgency + "\",";
     json += "\"confidence\":" + String(s.confidence, 2) + ",";
@@ -505,7 +521,7 @@ void setup() {
     // Recreate with header row
     File f = SD.open("/logs/readings.csv", FILE_WRITE);
     if (f) {
-      f.println("timestamp,raw_adc,temp_c,theta,status,urgency");
+      f.println("timestamp,raw_adc,temp_c,humidity,theta,status,urgency");
       f.close();
     }
     req->send(200, "application/json", "{\"success\":true}");
@@ -533,6 +549,8 @@ void loop() {
     float temp = tempSensor.getTempCByIndex(0);
     if (temp == DEVICE_DISCONNECTED_C)
       temp = 25.0f;
+    float h = dht.readHumidity();
+    float humidity = isnan(h) ? -1.0f : h;
 
     time_t ts = time(nullptr);
     if (ts < 1000000)
@@ -549,6 +567,7 @@ void loop() {
       s.timestamp = reading.timestamp;
       s.raw_adc = reading.raw_adc;
       s.temp_c = reading.temp_c;
+      s.humidity = humidity;
       s.theta = reading.theta;
       s.theta_fc = reading.theta_fc;
       s.theta_refill = reading.theta_refill;

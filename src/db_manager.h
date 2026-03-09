@@ -9,6 +9,7 @@ struct SampleData {
     time_t timestamp;
     int raw_adc;
     float temp_c;
+    float humidity = -1.0f;
     float theta;
     float theta_fc;
     float theta_refill;

@@ -1,5 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
+.hidden { display: none; }
+
 :root {
     --sage-700: #5f7b63;
     --sage-600: #7c9b80;
@@ -515,6 +517,28 @@ body {
     font-weight: 600;
     margin-bottom: 10px;
     color: var(--neutral-700);
+}
+
+.sensor-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--neutral-200, #e5e7eb);
+    gap: 12px;
+}
+.sensor-row:last-child {
+    border-bottom: none;
+}
+.sensor-label {
+    font-size: 0.875rem;
+    color: var(--neutral-600, #4b5563);
+}
+.sensor-value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--neutral-800, #1f2937);
+    white-space: nowrap;
 }
 
 .btn-primary,

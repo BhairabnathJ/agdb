@@ -13,6 +13,10 @@
 
     <main class="container">
 
+        <div id="dashboard-waiting" class="hidden">
+            <p>Waiting for sensor data...</p>
+        </div>
+
         <!-- Home -->
         <section id="tier-1" class="view-section active">
             <!-- Status Icon -->
@@ -175,6 +179,10 @@
                     <span id="t3-depletion">--</span>
                     <small id="t3-depletion-context">Since last refill: --</small>
                 </div>
+                <div class="metric-cell">
+                    <label>Humidity</label>
+                    <span id="t3-humidity">--</span>
+                </div>
             </div>
 
             <!-- Actions -->
@@ -184,7 +192,7 @@
             </div>
             <div class="action-grid" style="margin-top:8px;">
                 <button id="btn-view-settings" class="btn-secondary" onclick="App.navigate('settings')">View Settings</button>
-                <button id="btn-open-dev-tools" class="btn-ghost" onclick="App.toggleDevMode()">Open Dev Tools</button>
+                <button id="btn-open-dev-tools" class="btn-ghost" onclick="window.open('dev_dashboard.html' + (window.HARDWARE_MODE ? '?hardware=true' : ''), '_blank')">Open Dev Tools</button>
             </div>
 
         </section>
@@ -336,6 +344,44 @@
                         <p id="device-storage">Storage: 45% used</p>
                         <p id="device-troubleshooting">Troubleshooting: press <strong>Ctrl+Shift+D</strong> for diagnostics and dev tools.</p>
                     </div>
+                </div>
+                <div class="settings-group">
+                    <label class="settings-label">Live Sensor Readings</label>
+                    <div id="sensor-readings-panel">
+                        <div class="sensor-row">
+                            <span class="sensor-label">Soil Moisture (GPIO 34)</span>
+                            <span class="sensor-value" id="sr-raw">--</span>
+                        </div>
+                        <div class="sensor-row">
+                            <span class="sensor-label">Volumetric Water Content</span>
+                            <span class="sensor-value" id="sr-theta">--</span>
+                        </div>
+                        <div class="sensor-row">
+                            <span class="sensor-label">Soil Temperature (GPIO 4)</span>
+                            <span class="sensor-value" id="sr-temp">--</span>
+                        </div>
+                        <div class="sensor-row">
+                            <span class="sensor-label">Humidity (GPIO 16)</span>
+                            <span class="sensor-value" id="sr-humidity">--</span>
+                        </div>
+                        <div class="sensor-row">
+                            <span class="sensor-label">Soil Water Potential</span>
+                            <span class="sensor-value" id="sr-psi">--</span>
+                        </div>
+                        <div class="sensor-row">
+                            <span class="sensor-label">Available Water</span>
+                            <span class="sensor-value" id="sr-aw">--</span>
+                        </div>
+                        <div class="sensor-row">
+                            <span class="sensor-label">Status</span>
+                            <span class="sensor-value" id="sr-status">--</span>
+                        </div>
+                        <div class="sensor-row">
+                            <span class="sensor-label">Last Updated</span>
+                            <span class="sensor-value" id="sr-updated">--</span>
+                        </div>
+                    </div>
+                    <button class="btn-secondary" style="margin-top:12px;width:100%;" onclick="App.refreshSensorReadings()">Refresh</button>
                 </div>
             </div>
 

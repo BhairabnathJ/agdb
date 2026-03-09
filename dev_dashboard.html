@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgriScan — Dev Dashboard</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: #0d1117;
+            color: #c9d1d9;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            padding: 16px;
+            line-height: 1.5;
+        }
+
+        /* ── Status bar ── */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            background: #161b22;
+            border: 1px solid #21262d;
+            border-radius: 4px;
+            padding: 6px 12px;
+            margin-bottom: 16px;
+            font-size: 11px;
+            color: #8b949e;
+        }
+        .status-bar a { color: #58a6ff; text-decoration: none; }
+        .status-bar a:hover { text-decoration: underline; }
+        .dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #484f58;
+            vertical-align: middle;
+            margin-right: 4px;
+        }
+        .dot.green { background: #3fb950; }
+        .dot.amber { background: #d29922; }
+        .dot.red   { background: #f85149; }
+
+        /* ── Grid layout ── */
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        @media (max-width: 760px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        /* ── Section card ── */
+        .section {
+            margin-bottom: 16px;
+        }
+
+        .section-title {
+            font-size: 10px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #58a6ff;
+            padding: 0 0 4px 0;
+            border-bottom: 1px solid #21262d;
+            margin-bottom: 0;
+        }
+
+        /* ── Tables ── */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        thead th {
+            background: #161b22;
+            color: #6e7681;
+            font-size: 10px;
+            font-weight: normal;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 4px 8px;
+            text-align: left;
+        }
+        tbody td {
+            padding: 4px 8px;
+            border-bottom: 1px solid #21262d;
+            vertical-align: top;
+        }
+        tbody tr:last-child td { border-bottom: none; }
+
+        /* Row states */
+        tr.good  td { background: rgba(46, 160, 67, 0.12); color: #3fb950; }
+        tr.warn  td { background: rgba(210, 153, 34, 0.12); color: #d29922; }
+        tr.bad   td { background: rgba(248, 81, 73, 0.12);  color: #f85149; }
+        tr.plain td { color: #c9d1d9; }
+
+        /* ── Event log ── */
+        .event-log {
+            background: #161b22;
+            border: 1px solid #21262d;
+            border-radius: 4px;
+            padding: 6px 8px;
+            max-height: 220px;
+            overflow-y: auto;
+            font-size: 11px;
+        }
+        .log-row {
+            padding: 2px 0;
+            border-bottom: 1px solid #21262d;
+            color: #8b949e;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .log-row:last-child { border-bottom: none; }
+        .log-row.wetting  { color: #3fb950; }
+        .log-row.drainage { color: #58a6ff; }
+        .log-row.fc       { color: #d29922; }
+        .log-row.state    { color: #bc8cff; }
+        .log-row.error    { color: #f85149; }
+        .log-row.empty    { color: #484f58; font-style: italic; }
+
+        .badge {
+            display: inline-block;
+            font-size: 9px;
+            font-weight: bold;
+            padding: 1px 5px;
+            border-radius: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-left: 4px;
+            vertical-align: middle;
+        }
+        .badge.mock     { background: #30363d; color: #8b949e; }
+        .badge.hardware { background: #1f4428; color: #3fb950; }
+    </style>
+</head>
+<body>
+
+    <!-- Status bar -->
+    <div class="status-bar">
+        <span>
+            <span class="dot" id="dot-conn"></span>
+            <span id="lbl-mode">initializing…</span>
+            <span class="badge" id="badge-mode"></span>
+        </span>
+        <span>Updated: <span id="lbl-updated">—</span></span>
+        <span style="margin-left:auto;"><a href="index.html">← Main Dashboard</a></span>
+    </div>
+
+    <div class="grid">
+
+        <!-- ── LEFT COLUMN ── -->
+        <div>
+
+            <!-- Live Sensor Data -->
+            <div class="section">
+                <div class="section-title">Live Sensor Data</div>
+                <table>
+                    <thead><tr><th>Field</th><th>Value</th></tr></thead>
+                    <tbody id="tbl-live">
+                        <tr class="plain"><td colspan="2">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Signal Quality -->
+            <div class="section">
+                <div class="section-title">Signal Quality</div>
+                <table>
+                    <thead><tr><th>Check</th><th>Status</th></tr></thead>
+                    <tbody id="tbl-quality">
+                        <tr class="plain"><td colspan="2">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- System Health -->
+            <div class="section">
+                <div class="section-title">System Health</div>
+                <table>
+                    <thead><tr><th>Field</th><th>Value</th></tr></thead>
+                    <tbody id="tbl-health">
+                        <tr class="plain"><td colspan="2">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+        </div><!-- /left -->
+
+        <!-- ── RIGHT COLUMN ── -->
+        <div>
+
+            <!-- Calibration State -->
+            <div class="section">
+                <div class="section-title">Calibration State</div>
+                <table>
+                    <thead><tr><th>Field</th><th>Value</th></tr></thead>
+                    <tbody id="tbl-cal">
+                        <tr class="plain"><td colspan="2">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Physics Event Log -->
+            <div class="section">
+                <div class="section-title">Physics Event Log &nbsp;<span style="color:#484f58;font-size:9px;letter-spacing:0;">(last 20, newest first)</span></div>
+                <div class="event-log" id="event-log">
+                    <div class="log-row empty">No events yet.</div>
+                </div>
+            </div>
+
+        </div><!-- /right -->
+
+    </div><!-- /grid -->
+
+    <!-- Load physics engine first, then set __devDashboard flag, then load app.js -->
+    <script src="js/physics.js"></script>
+    <script src="js/i18n.js"></script>
+    <script>
+        // Prevent App.init() from auto-running on this page
+        window.__devDashboard = true;
+        // Hardware mode detection
+        window.HARDWARE_MODE = new URLSearchParams(location.search).get('hardware') === 'true';
+    </script>
+    <script src="js/app.js"></script>
+
+    <script>
+    (function () {
+        'use strict';
+
+        const HW = window.HARDWARE_MODE;
+
+        // ── Status bar ──────────────────────────────────────────────────────────
+        const dotConn   = document.getElementById('dot-conn');
+        const lblMode   = document.getElementById('lbl-mode');
+        const badgeMode = document.getElementById('badge-mode');
+        const lblUpd    = document.getElementById('lbl-updated');
+
+        dotConn.className   = 'dot ' + (HW ? 'green' : 'amber');
+        lblMode.textContent = HW ? 'Connected to Hub' : 'Mock Mode';
+        badgeMode.className = 'badge ' + (HW ? 'hardware' : 'mock');
+        badgeMode.textContent = HW ? 'hardware' : 'mock';
+
+        // ── Initialize mock data if needed ──────────────────────────────────────
+        if (!HW && typeof MockAPI !== 'undefined') {
+            MockAPI.init();
+            // Seed with threshold config if available
+            THRESHOLDS_STORE.load().then(() => {
+                App.state.settings.crop = App.state.settings.crop || 'tomato';
+                App.state.settings.soil = App.state.settings.soil || 'loam';
+                App.applyThresholdConfig();
+            }).catch(() => {});
+            MockAPI.seed();
+        }
+
+        // ── Local ring buffer for signal quality ────────────────────────────────
+        const readingBuf = [];   // { raw, theta, ts }
+        const MAX_BUF = 60;
+
+        // ── Data fetchers ───────────────────────────────────────────────────────
+        async function fetchSample() {
+            if (HW) {
+                try {
+                    const r = await fetch('/api/current');
+                    if (!r.ok) return null;
+                    return r.json();
+                } catch { return null; }
+            }
+            // Mock: inject a fresh reading to advance the engine state
+            if (typeof MockAPI === 'undefined') return null;
+            const ids = Object.keys(MockAPI.zones);
+            if (ids.length > 0) {
+                const zoneId = ids[0];
+                const zone   = MockAPI.zones[zoneId];
+                const raw    = Math.max(200, Math.min(3900,
+                    (zone.currentRaw || 600) + (Math.random() - 0.48) * 25));
+                MockAPI.inject(raw, 22 + Math.random() * 4, zoneId);
+            }
+            return MockAPI.getCurrent ? await MockAPI.getCurrent() : null;
+        }
+
+        async function fetchDiagnostics() {
+            if (HW) {
+                try {
+                    const r = await fetch('/api/diagnostics');
+                    if (!r.ok) return null;
+                    return r.json();
+                } catch { return null; }
+            }
+            return typeof MockAPI !== 'undefined' ? MockAPI.getDiagnostics() : null;
+        }
+
+        function getCalState() {
+            const eng = window.Physics;
+            if (eng && eng.autoCalibration) {
+                return eng.autoCalibration.getCalibrationState() || {};
+            }
+            return {};
+        }
+
+        function getEvents() {
+            return typeof PhysicsEventLogger !== 'undefined'
+                ? PhysicsEventLogger.getEvents() : [];
+        }
+
+        // ── Helpers ─────────────────────────────────────────────────────────────
+        function fmtTime(isoOrUnix) {
+            if (!isoOrUnix) return '—';
+            // If it looks like a Unix timestamp (number < 2e10)
+            const n = Number(isoOrUnix);
+            const d = (!isNaN(n) && n < 2e10)
+                ? new Date(n * 1000)
+                : new Date(isoOrUnix);
+            return isNaN(d) ? '—' : d.toLocaleTimeString();
+        }
+
+        function row(field, value, cls) {
+            cls = cls || 'plain';
+            return `<tr class="${cls}"><td>${field}</td><td>${value}</td></tr>`;
+        }
+
+        // ── Render: Live Sensor Data ────────────────────────────────────────────
+        function renderLive(s) {
+            const tb = document.getElementById('tbl-live');
+            if (!s) {
+                tb.innerHTML = row('Status', 'No data — waiting…', 'bad');
+                return;
+            }
+            const raw  = s.raw ?? s.raw_adc ?? null;
+            const ageS = s.timestamp ? Math.round(Date.now() / 1000 - s.timestamp) : null;
+
+            tb.innerHTML = [
+                row('Raw ADC',
+                    raw != null ? raw : '—',
+                    raw == null ? 'plain' : (raw >= 200 && raw <= 3900 ? 'good' : 'bad')),
+                row('VWC %',
+                    s.theta != null ? (s.theta * 100).toFixed(2) + ' %' : '—',
+                    s.theta != null && (s.theta < 0 || s.theta > 0.6) ? 'bad' : 'plain'),
+                row('Soil Temp',
+                    s.temp_c != null ? s.temp_c.toFixed(1) + ' °C' : '—',
+                    'plain'),
+                row('Last Reading',
+                    s.timestamp ? fmtTime(s.timestamp) : '—',
+                    'plain'),
+                row('Reading Age',
+                    ageS != null ? ageS + ' s' : '—',
+                    ageS == null ? 'plain' : ageS > 120 ? 'bad' : ageS > 60 ? 'warn' : 'good'),
+            ].join('');
+        }
+
+        // ── Render: Calibration State ───────────────────────────────────────────
+        function renderCal(cal) {
+            const tb   = document.getElementById('tbl-cal');
+            const conf = cal.confidence || 0;
+            const confCls = conf >= 0.65 ? 'good' : conf >= 0.35 ? 'warn' : 'bad';
+            const state   = cal.state || cal.stage || '—';
+
+            tb.innerHTML = [
+                row('Stage',              state, 'plain'),
+                row('Confidence',         (conf * 100).toFixed(1) + ' %', confCls),
+                row('Field Capacity (FC)',
+                    cal.theta_fc_star != null
+                        ? (cal.theta_fc_star * 100).toFixed(1) + ' %' : '—',
+                    'plain'),
+                row('Refill Threshold',
+                    cal.theta_refill_star != null
+                        ? (cal.theta_refill_star * 100).toFixed(1) + ' %' : '—',
+                    'plain'),
+                row('Wetting Events',     cal.n_events  ?? '0', 'plain'),
+                row('FC Updates',         cal.n_fc_updates ?? '0', 'plain'),
+            ].join('');
+        }
+
+        // ── Render: Signal Quality ──────────────────────────────────────────────
+        function renderQuality(s) {
+            const tb = document.getElementById('tbl-quality');
+            if (!s) { tb.innerHTML = row('Status', 'No data', 'bad'); return; }
+
+            const raw = s.raw ?? s.raw_adc ?? null;
+
+            // Push to buffer
+            readingBuf.push({ raw, theta: s.theta, ts: Date.now() / 1000 });
+            if (readingBuf.length > MAX_BUF) readingBuf.shift();
+
+            const last5     = readingBuf.slice(-5);
+            const rawOk     = raw != null && raw >= 200 && raw <= 900;
+            const stuck     = last5.length >= 5 && last5.every(r => r.raw === last5[0].raw);
+            const outOfRange = s.theta != null && (s.theta > 0.6 || s.theta < 0);
+
+            // Readings in last 60 seconds
+            const cutoff = Date.now() / 1000 - 60;
+            const freqCount = readingBuf.filter(r => r.ts >= cutoff).length;
+
+            tb.innerHTML = [
+                row('Sensor Status',
+                    rawOk ? 'OK' : 'FAULT',
+                    rawOk ? 'good' : 'bad'),
+                row('Value Stuck',
+                    stuck ? 'STUCK (last 5 identical)' : 'OK',
+                    stuck ? 'bad' : 'good'),
+                row('Out of Range',
+                    outOfRange ? `YES (θ = ${s.theta.toFixed(3)})` : 'OK',
+                    outOfRange ? 'bad' : 'good'),
+                row('Reading Freq (60s)',
+                    freqCount + ' reading' + (freqCount !== 1 ? 's' : ''),
+                    freqCount === 0 ? 'bad' : freqCount < 3 ? 'warn' : 'plain'),
+            ].join('');
+        }
+
+        // ── Render: System Health ───────────────────────────────────────────────
+        function renderHealth(d) {
+            const tb = document.getElementById('tbl-health');
+            if (!d) { tb.innerHTML = row('Status', 'No data — waiting…', 'bad'); return; }
+
+            const sd  = d.sd_card  || {};
+            const sys = d.system   || {};
+
+            const sdOk       = sd.status === 'ok';
+            const writeStale = (sd.last_write_seconds_ago || 0) > 120;
+            const memLow     = sys.memory_free_kb != null && sys.memory_free_kb < 50;
+            const hasErrors  = (d.errors_24h || 0) > 0;
+
+            tb.innerHTML = [
+                row('Uptime',
+                    sys.uptime_hours != null ? sys.uptime_hours.toFixed(1) + ' h' : '—',
+                    'plain'),
+                row('SD Card',
+                    sd.status || '—',
+                    sdOk ? 'good' : 'bad'),
+                row('SD Free',
+                    sd.free_gb != null ? sd.free_gb.toFixed(1) + ' GB' : '—',
+                    sd.free_gb != null && sd.free_gb < 0.5 ? 'bad'
+                        : sd.free_gb != null && sd.free_gb < 2 ? 'warn' : 'plain'),
+                row('Last DB Write',
+                    sd.last_write_seconds_ago != null
+                        ? sd.last_write_seconds_ago + ' s ago' : '—',
+                    writeStale ? 'bad' : 'plain'),
+                row('Memory Free',
+                    sys.memory_free_kb != null ? sys.memory_free_kb + ' KB' : '—',
+                    memLow ? 'bad' : 'plain'),
+                row('Errors (24 h)',
+                    d.errors_24h ?? '0',
+                    hasErrors ? 'bad' : 'good'),
+            ].join('');
+        }
+
+        // ── Render: Physics Event Log ───────────────────────────────────────────
+        function renderEventLog() {
+            const el     = document.getElementById('event-log');
+            const events = getEvents();
+            const last20 = events.slice(-20).reverse();
+
+            if (last20.length === 0) {
+                el.innerHTML = '<div class="log-row empty">No events yet.</div>';
+                return;
+            }
+
+            el.innerHTML = last20.map(ev => {
+                const ts      = fmtTime(ev.timestamp);
+                const type    = ev.event_type || ev.type || 'EVENT';
+                const detail  = ev.details || ev.message || '';
+                const calInfo = ev.cal_state ? ` [${ev.cal_state}]` : '';
+
+                let cls = 'log-row';
+                const t = type.toLowerCase();
+                if (t.includes('wet'))          cls += ' wetting';
+                else if (t.includes('drain'))   cls += ' drainage';
+                else if (t.includes('fc'))      cls += ' fc';
+                else if (t.includes('state')
+                      || t.includes('update')
+                      || t.includes('refill'))  cls += ' state';
+                else if (t.includes('error')
+                      || t.includes('fault'))   cls += ' error';
+
+                return `<div class="${cls}">[${ts}] ${type} — ${detail}${calInfo}</div>`;
+            }).join('');
+        }
+
+        // ── Tick functions ───────────────────────────────────────────────────────
+        async function tickFast() {
+            try {
+                const [s, cal] = await Promise.all([
+                    fetchSample(),
+                    Promise.resolve(getCalState())
+                ]);
+                renderLive(s);
+                renderQuality(s);
+                renderCal(cal);
+                renderEventLog();
+                lblUpd.textContent = new Date().toLocaleTimeString();
+            } catch (e) {
+                console.warn('[DevDash] tickFast error', e);
+            }
+        }
+
+        async function tickSlow() {
+            try {
+                const d = await fetchDiagnostics();
+                renderHealth(d);
+            } catch (e) {
+                console.warn('[DevDash] tickSlow error', e);
+            }
+        }
+
+        // ── Start ────────────────────────────────────────────────────────────────
+        tickFast();
+        tickSlow();
+        setInterval(tickFast, 2000);
+        setInterval(tickSlow, 5000);
+
+    })();
+    </script>
+
+</body>
+</html>

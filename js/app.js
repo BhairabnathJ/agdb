@@ -85,19 +85,6 @@ async function buildZoneMapFromDevices() {
             Logger.log('ERROR', 'buildZoneMapFromDevices failed', e);
             return { empty: true, message: 'Could not reach device API.' };
         }
-    } else {
-        // Mock mode: derive zones from MockAPI.zones
-        const ids = Object.keys(MockAPI.zones);
-        if (ids.length === 0) return { empty: true, message: 'No CropBands paired yet.' };
-        return ids.map((id, i) => ({
-            id,
-            name: 'Zone ' + id,
-            row: MockAPI.zones[id].row ?? Math.floor(i / 4),
-            col: MockAPI.zones[id].col ?? (i % 4),
-            active: MockAPI.zones[id].active !== false,
-            battery: MockAPI.zones[id].battery ?? 100,
-            lastSeen: null
-        }));
     }
 }
 
@@ -207,13 +194,8 @@ const PhysicsEventLogger = {
         this.events.push(event);
         Logger.log('PHYSICS_EVENT', `${eventType}: ${details}`, { calState });
 
-        // Simulate API call to ESP32 (in real ESP32, this writes to physics_events.csv)
-        try {
-            // MockAPI.logPhysicsEvent simulates the POST /api/log_event endpoint
-            await MockAPI.logPhysicsEvent(event);
-        } catch (error) {
-            Logger.log('ERROR', 'Failed to log physics event', error);
-        }
+        // Physics event logged locally only; ESP32 records events to its own CSV
+
 
         return event;
     },
@@ -287,284 +269,6 @@ const PhysicsEventLogger = {
     }
 };
 
-// =============================================================================
-// MOCK API (Simulating ESP32 Web Server)
-// =============================================================================
-
-const MockAPI = {
-    db: [],
-    zones: {},
-    simulationRunning: false,
-    simulationInterval: null,
-    simulationLogs: [],
-
-    init: function () {
-        // Initialize zones from a default set for mock mode
-        const defaultSensors = [
-            { id: 'A1', row: 0, col: 0, active: true },
-            { id: 'A2', row: 0, col: 1, active: true },
-            { id: 'A3', row: 0, col: 2, active: false },
-            { id: 'A4', row: 0, col: 3, active: true },
-            { id: 'B1', row: 1, col: 0, active: true },
-            { id: 'B2', row: 1, col: 1, active: false },
-            { id: 'B3', row: 1, col: 2, active: true },
-            { id: 'B4', row: 1, col: 3, active: false },
-            { id: 'C1', row: 2, col: 0, active: false },
-            { id: 'C2', row: 2, col: 1, active: true },
-            { id: 'C3', row: 2, col: 2, active: false },
-            { id: 'C4', row: 2, col: 3, active: true },
-            { id: 'D1', row: 3, col: 0, active: false },
-            { id: 'D2', row: 3, col: 1, active: true },
-            { id: 'D3', row: 3, col: 2, active: true },
-            { id: 'D4', row: 3, col: 3, active: false }
-        ];
-        defaultSensors.forEach(sensor => {
-            if (sensor.active) {
-                this.zones[sensor.id] = {
-                    ...sensor,
-                    history: [],
-                    currentRaw: 600 + Math.random() * 200,
-                    battery: 70 + Math.random() * 30
-                };
-            }
-        });
-        Logger.log('DATA', `Initialized ${Object.keys(this.zones).length} active zones`);
-    },
-
-    inject: function (raw_adc, temp_c, zoneId = 'A1') {
-        const ts = Math.floor(Date.now() / 1000);
-
-        if (typeof window.PhysicsRegistry === 'undefined') {
-            Logger.log('ERROR', 'PhysicsRegistry not loaded');
-            return null;
-        }
-
-        const engine = window.PhysicsRegistry.getOrCreate(zoneId);
-        const sample = engine.processSensorReading(raw_adc, temp_c, ts);
-
-        // Add zone info
-        sample.zoneId = zoneId;
-        sample.battery = this.zones[zoneId]?.battery || 100;
-
-        // Log physics output
-        Logger.log('PHYSICS', `Zone ${zoneId} processed`, {
-            raw: raw_adc,
-            theta: (sample.theta * 100).toFixed(2) + '%',
-            status: sample.status,
-            urgency: sample.urgency,
-            confidence: (sample.confidence * 100).toFixed(1) + '%',
-            regime: sample.regime,
-            psi_kPa: sample.psi_kPa?.toFixed(2)
-        });
-
-        // Store in main DB
-        this.db.push(sample);
-        if (this.db.length > 2880) this.db.shift();
-
-        // Store in zone history
-        if (this.zones[zoneId]) {
-            this.zones[zoneId].history.push(sample);
-            this.zones[zoneId].currentRaw = raw_adc;
-            if (this.zones[zoneId].history.length > 2880) {
-                this.zones[zoneId].history.shift();
-            }
-        }
-
-        // Check for physics events (wetting, state changes, etc.)
-        PhysicsEventLogger.checkForEvents(sample);
-
-        return sample;
-    },
-
-    seed: function () {
-        Logger.log('DATA', 'Seeding initial data for all zones...');
-        let now = Math.floor(Date.now() / 1000);
-
-        Object.keys(this.zones).forEach(zoneId => {
-            let raw = 500 + Math.random() * 300;
-            for (let i = 0; i < 30; i++) {
-                const t = now - (30 - i) * 600;
-                raw += (Math.random() - 0.48) * 30; // Slight drying trend
-                raw = Math.max(300, Math.min(900, raw));
-
-                if (typeof window.PhysicsRegistry !== 'undefined') {
-                    const engine = window.PhysicsRegistry.getOrCreate(zoneId);
-                    const sample = engine.processSensorReading(raw, 22 + Math.random() * 4, t);
-                    sample.zoneId = zoneId;
-                    sample.battery = this.zones[zoneId].battery;
-                    this.db.push(sample);
-                    this.zones[zoneId].history.push(sample);
-                    this.zones[zoneId].currentRaw = raw;
-                }
-            }
-        });
-
-        Logger.log('DATA', `Seeded ${this.db.length} total samples across ${Object.keys(this.zones).length} zones`);
-    },
-
-    getCurrent: async function (zoneId = null) {
-        if (this.db.length === 0) {
-            this.seed();
-        }
-
-        if (zoneId && this.zones[zoneId]) {
-            const history = this.zones[zoneId].history;
-            return history.length > 0 ? history[history.length - 1] : null;
-        }
-
-        return this.db[this.db.length - 1];
-    },
-
-    getSeries: async function (zoneId = null) {
-        if (zoneId && this.zones[zoneId]) {
-            return this.zones[zoneId].history;
-        }
-        return this.db;
-    },
-
-    getAllZones: function () {
-        const zoneStatus = {};
-        Object.keys(this.zones).forEach(zoneId => {
-            const history = this.zones[zoneId].history;
-            const latest = history.length > 0 ? history[history.length - 1] : null;
-            zoneStatus[zoneId] = {
-                ...this.zones[zoneId],
-                latest: latest
-            };
-        });
-        return zoneStatus;
-    },
-
-    getGlobalStatus: function () {
-        const zones = this.getAllZones();
-        let worstUrgency = 'none';
-        let criticalCount = 0;
-        let warningCount = 0;
-
-        Object.values(zones).forEach(zone => {
-            if (zone.latest) {
-                if (zone.latest.urgency === 'high') {
-                    worstUrgency = 'high';
-                    criticalCount++;
-                } else if (zone.latest.urgency === 'medium' && worstUrgency !== 'high') {
-                    worstUrgency = 'medium';
-                    warningCount++;
-                }
-            }
-        });
-
-        return { worstUrgency, criticalCount, warningCount, totalZones: Object.keys(zones).length };
-    },
-
-    // ==========================================================================
-    // API ENDPOINTS (simulating ESP32 web server)
-    // ==========================================================================
-
-    /**
-     * POST /api/log_event - Log a physics event
-     */
-    logPhysicsEvent: async function (event) {
-        // In real ESP32, this appends to /logs/physics_events.csv
-        // Here we just store it
-        if (!this.physicsEvents) this.physicsEvents = [];
-        this.physicsEvents.push(event);
-        return { success: true };
-    },
-
-    /**
-     * GET /api/diagnostics - Get system diagnostics
-     */
-    getDiagnostics: function () {
-        const uptime = Math.floor((Date.now() - (window.appStartTime || Date.now())) / 1000);
-        const uptimeHours = uptime / 3600;
-
-        // Get calibration state from physics engine
-        let calibration = { status: 'Unknown', confidence: 0, events_captured: 0 };
-        if (typeof window.Physics !== 'undefined' && window.Physics.autoCalibration) {
-            const calState = window.Physics.autoCalibration.getCalibrationState();
-            const conf = calState.confidence || 0;
-            calibration = {
-                status: conf < 0.35 ? 'Learning' : conf < 0.65 ? 'Calibrating' : 'Calibrated',
-                confidence: conf,
-                events_captured: calState.n_events || 0
-            };
-        }
-
-        // Get latest sensor data
-        const latest = this.db.length > 0 ? this.db[this.db.length - 1] : null;
-        const lastReadingSecsAgo = latest ? Math.floor((Date.now() / 1000) - latest.timestamp) : 999;
-
-        return {
-            sd_card: {
-                status: 'ok',
-                free_gb: 31.9,
-                last_write_seconds_ago: 2
-            },
-            sensors: {
-                soil_status: 'ok',
-                soil_last_raw: latest?.raw || 0,
-                temp_status: 'ok',
-                temp_last_c: latest?.temp_c || 0,
-                failure_rate_percent: 0.2
-            },
-            system: {
-                uptime_hours: Math.round(uptimeHours * 10) / 10,
-                memory_free_kb: 145,
-                last_reading_seconds_ago: lastReadingSecsAgo
-            },
-            calibration: calibration,
-            errors_24h: 0
-        };
-    },
-
-    /**
-     * GET /api/config - Get user preferences
-     */
-    getConfig: function () {
-        const stored = localStorage.getItem('agriscan_user_prefs');
-        if (stored) {
-            try {
-                return App.normalizePrefs(JSON.parse(stored));
-            } catch (e) {
-                Logger.log('ERROR', 'Config parse error', e);
-            }
-        }
-        // Return default config
-        return {
-            onboarding_complete: false,
-            device_name: '',
-            root_depth_cm: 30,
-            crop: 'tomato',
-            soil: 'loam',
-            setup_date: null,
-            planting_ts: null,
-            farmer_name: '',
-            notes: ''
-        };
-    },
-
-    /**
-     * POST /api/config - Save user preferences
-     */
-    saveConfig: function (config) {
-        try {
-            localStorage.setItem('agriscan_user_prefs', JSON.stringify(config));
-            Logger.log('DATA', 'User config saved', config);
-            return { success: true };
-        } catch (e) {
-            Logger.log('ERROR', 'Failed to save config', e);
-            return { success: false, error: e.message };
-        }
-    },
-
-    /**
-     * GET /api/data?hours=24 - Get historical sensor data
-     */
-    getData: function (hours = 24) {
-        const cutoff = Date.now() / 1000 - (hours * 3600);
-        return this.db.filter(s => s.timestamp >= cutoff);
-    }
-};
 
 // =============================================================================
 // REAL HARDWARE API (Issue 6)
@@ -600,352 +304,7 @@ const RealAPI = {
     }
 };
 
-// Unified data source: hardware or mock (Issue 6)
-const DataSource = window.HARDWARE_MODE ? RealAPI : MockAPI;
 
-// =============================================================================
-// SIMULATION ENGINE
-// =============================================================================
-
-const Simulator = {
-    running: false,
-    currentSim: null,
-    interval: null,
-    logs: [],
-    startTime: null,
-    tickCount: 0,
-
-    // Rain simulation - rapid wetting across zones
-    simulateRain: function () {
-        if (this.running) {
-            Logger.log('SIMULATION', 'Stopping current simulation first...');
-            this.stop();
-        }
-
-        // Enable simulation mode for faster calibration
-        if (typeof window.Physics !== 'undefined' && window.Physics.enableSimulationMode) {
-            window.Physics?.enableSimulationMode();
-        }
-
-        Logger.log('SIMULATION', '🌧️ Starting RAIN simulation');
-        this.running = true;
-        this.currentSim = 'rain';
-        this.logs = [];
-        this.startTime = Date.now();
-        this.tickCount = 0;
-
-        const zones = Object.keys(MockAPI.zones);
-        let ticksRemaining = 15;
-
-        this.interval = setInterval(() => {
-            this.tickCount++;
-            ticksRemaining--;
-
-            zones.forEach(zoneId => {
-                let raw = MockAPI.zones[zoneId].currentRaw;
-                // Rain decreases raw ADC (increases moisture)
-                const rainIntensity = 80 + Math.random() * 60;
-                raw -= rainIntensity;
-                raw = Math.max(250, raw); // Don't go below saturation
-
-                const sample = MockAPI.inject(raw, 20 + Math.random() * 2, zoneId);
-
-                this.logs.push({
-                    tick: this.tickCount,
-                    time: Date.now() - this.startTime,
-                    zone: zoneId,
-                    raw: raw,
-                    theta: sample?.theta,
-                    status: sample?.status,
-                    urgency: sample?.urgency
-                });
-            });
-
-            Logger.log('SIMULATION', `Rain tick ${this.tickCount}/${15}`, {
-                avgRaw: Math.round(zones.reduce((sum, z) => sum + MockAPI.zones[z].currentRaw, 0) / zones.length)
-            });
-
-            App.updateData();
-
-            if (ticksRemaining <= 0) {
-                this.stop();
-                Logger.log('SIMULATION', '🌧️ Rain simulation complete', {
-                    duration: Date.now() - this.startTime,
-                    totalTicks: this.tickCount
-                });
-            }
-        }, 300);
-    },
-
-    // Drought simulation - gradual drying
-    simulateDrought: function () {
-        if (this.running) {
-            Logger.log('SIMULATION', 'Stopping current simulation first...');
-            this.stop();
-        }
-
-        // Enable simulation mode for faster calibration
-        if (typeof window.Physics !== 'undefined' && window.Physics.enableSimulationMode) {
-            window.Physics?.enableSimulationMode();
-        }
-
-        Logger.log('SIMULATION', '☀️ Starting DROUGHT simulation');
-        this.running = true;
-        this.currentSim = 'drought';
-        this.logs = [];
-        this.startTime = Date.now();
-        this.tickCount = 0;
-
-        const zones = Object.keys(MockAPI.zones);
-        let ticksRemaining = 20;
-
-        this.interval = setInterval(() => {
-            this.tickCount++;
-            ticksRemaining--;
-
-            zones.forEach(zoneId => {
-                let raw = MockAPI.zones[zoneId].currentRaw;
-                // Drought increases raw ADC (decreases moisture)
-                const dryingRate = 20 + Math.random() * 30;
-                raw += dryingRate;
-                raw = Math.min(950, raw); // Don't exceed dry limit
-
-                const sample = MockAPI.inject(raw, 28 + Math.random() * 4, zoneId);
-
-                this.logs.push({
-                    tick: this.tickCount,
-                    time: Date.now() - this.startTime,
-                    zone: zoneId,
-                    raw: raw,
-                    theta: sample?.theta,
-                    status: sample?.status,
-                    urgency: sample?.urgency
-                });
-            });
-
-            Logger.log('SIMULATION', `Drought tick ${this.tickCount}/${20}`, {
-                avgRaw: Math.round(zones.reduce((sum, z) => sum + MockAPI.zones[z].currentRaw, 0) / zones.length)
-            });
-
-            App.updateData();
-
-            if (ticksRemaining <= 0) {
-                this.stop();
-                Logger.log('SIMULATION', '☀️ Drought simulation complete', {
-                    duration: Date.now() - this.startTime,
-                    totalTicks: this.tickCount
-                });
-            }
-        }, 400);
-    },
-
-    // 10-minute long run simulation with realistic patterns
-    simulateLongRun: function () {
-        if (this.running) {
-            Logger.log('SIMULATION', 'Stopping current simulation first...');
-            this.stop();
-        }
-
-        // Enable simulation mode for faster calibration
-        if (typeof window.Physics !== 'undefined' && window.Physics.enableSimulationMode) {
-            window.Physics?.enableSimulationMode();
-        }
-
-        const DURATION_MS = 10 * 60 * 1000; // 10 minutes
-        const TICK_INTERVAL = 2000; // Every 2 seconds
-        const TOTAL_TICKS = DURATION_MS / TICK_INTERVAL;
-
-        Logger.log('SIMULATION', '⏱️ Starting 10-MINUTE LONG RUN simulation', {
-            duration: '10 minutes',
-            tickInterval: '2 seconds',
-            totalTicks: TOTAL_TICKS
-        });
-
-        this.running = true;
-        this.currentSim = 'longrun';
-        this.logs = [];
-        this.startTime = Date.now();
-        this.tickCount = 0;
-
-        const zones = Object.keys(MockAPI.zones);
-
-        // Simulation phases
-        const phases = [
-            { name: 'baseline', start: 0, end: 0.1, trend: 'stable' },
-            { name: 'morning_drying', start: 0.1, end: 0.3, trend: 'drying' },
-            { name: 'irrigation_event', start: 0.3, end: 0.35, trend: 'wetting' },
-            { name: 'drainage', start: 0.35, end: 0.5, trend: 'draining' },
-            { name: 'afternoon_drying', start: 0.5, end: 0.7, trend: 'drying' },
-            { name: 'evening_stable', start: 0.7, end: 0.85, trend: 'stable' },
-            { name: 'night_recovery', start: 0.85, end: 1.0, trend: 'slight_wetting' }
-        ];
-
-        this.interval = setInterval(() => {
-            this.tickCount++;
-            const progress = this.tickCount / TOTAL_TICKS;
-            const elapsedMin = ((Date.now() - this.startTime) / 60000).toFixed(1);
-
-            // Determine current phase
-            const currentPhase = phases.find(p => progress >= p.start && progress < p.end) || phases[phases.length - 1];
-
-            zones.forEach(zoneId => {
-                let raw = MockAPI.zones[zoneId].currentRaw;
-                let temp = 22;
-
-                // Apply phase-specific behavior
-                switch (currentPhase.trend) {
-                    case 'stable':
-                        raw += (Math.random() - 0.5) * 10;
-                        temp = 22 + Math.random() * 2;
-                        break;
-                    case 'drying':
-                        raw += 5 + Math.random() * 15;
-                        temp = 26 + Math.random() * 4;
-                        break;
-                    case 'wetting':
-                        raw -= 40 + Math.random() * 30;
-                        temp = 20 + Math.random() * 2;
-                        break;
-                    case 'draining':
-                        raw += 2 + Math.random() * 8;
-                        temp = 24 + Math.random() * 2;
-                        break;
-                    case 'slight_wetting':
-                        raw -= 2 + Math.random() * 5;
-                        temp = 18 + Math.random() * 2;
-                        break;
-                }
-
-                raw = Math.max(250, Math.min(950, raw));
-
-                const sample = MockAPI.inject(raw, temp, zoneId);
-
-                this.logs.push({
-                    tick: this.tickCount,
-                    time: Date.now() - this.startTime,
-                    elapsed_min: parseFloat(elapsedMin),
-                    phase: currentPhase.name,
-                    zone: zoneId,
-                    raw: Math.round(raw),
-                    temp: temp.toFixed(1),
-                    theta: sample?.theta,
-                    theta_pct: sample?.theta ? (sample.theta * 100).toFixed(2) : null,
-                    psi_kPa: sample?.psi_kPa?.toFixed(2),
-                    AW_mm: sample?.AW_mm?.toFixed(2),
-                    status: sample?.status,
-                    urgency: sample?.urgency,
-                    confidence: sample?.confidence?.toFixed(3),
-                    regime: sample?.regime
-                });
-            });
-
-            // Log progress every 30 seconds
-            if (this.tickCount % 15 === 0) {
-                const globalStatus = MockAPI.getGlobalStatus();
-                Logger.log('SIMULATION', `Long run: ${elapsedMin} min (${(progress * 100).toFixed(0)}%) - Phase: ${currentPhase.name}`, {
-                    worstUrgency: globalStatus.worstUrgency,
-                    critical: globalStatus.criticalCount,
-                    warning: globalStatus.warningCount
-                });
-            }
-
-            App.updateData();
-
-            if (this.tickCount >= TOTAL_TICKS) {
-                this.stop();
-                this.generateReport();
-            }
-        }, TICK_INTERVAL);
-
-        // Show countdown in UI
-        this.updateCountdown(DURATION_MS);
-    },
-
-    updateCountdown: function (remainingMs) {
-        const countdownEl = document.getElementById('sim-countdown');
-        if (countdownEl && this.running) {
-            const elapsed = Date.now() - this.startTime;
-            const remaining = Math.max(0, remainingMs - elapsed);
-            const mins = Math.floor(remaining / 60000);
-            const secs = Math.floor((remaining % 60000) / 1000);
-            countdownEl.textContent = `${mins}:${secs.toString().padStart(2, '0')} remaining`;
-
-            if (remaining > 0) {
-                setTimeout(() => this.updateCountdown(remainingMs), 1000);
-            }
-        }
-    },
-
-    stop: function () {
-        if (this.interval) {
-            clearInterval(this.interval);
-            this.interval = null;
-        }
-        this.running = false;
-
-        // Disable simulation mode
-        if (typeof window.Physics !== 'undefined' && window.Physics.disableSimulationMode) {
-            window.Physics?.disableSimulationMode();
-        }
-
-        Logger.log('SIMULATION', `Simulation "${this.currentSim}" stopped`, {
-            totalTicks: this.tickCount,
-            totalLogs: this.logs.length
-        });
-    },
-
-    generateReport: function () {
-        Logger.log('SIMULATION', '📊 Generating simulation report...');
-
-        const report = {
-            simulation: this.currentSim,
-            startTime: new Date(this.startTime).toISOString(),
-            endTime: new Date().toISOString(),
-            duration_ms: Date.now() - this.startTime,
-            duration_readable: `${((Date.now() - this.startTime) / 60000).toFixed(1)} minutes`,
-            totalTicks: this.tickCount,
-            totalDataPoints: this.logs.length,
-            zones: Object.keys(MockAPI.zones),
-            summary: this.calculateSummary()
-        };
-
-        Logger.log('SIMULATION', '📊 Report complete', report.summary);
-
-        console.log('%c=== SIMULATION REPORT ===', 'font-size: 16px; font-weight: bold; color: #1976D2;');
-        console.table(report.summary.byZone);
-
-        return report;
-    },
-
-    calculateSummary: function () {
-        const byZone = {};
-        const zones = Object.keys(MockAPI.zones);
-
-        zones.forEach(zoneId => {
-            const zoneLogs = this.logs.filter(l => l.zone === zoneId);
-            const thetaValues = zoneLogs.map(l => l.theta).filter(v => v !== null);
-
-            byZone[zoneId] = {
-                dataPoints: zoneLogs.length,
-                theta_min: (Math.min(...thetaValues) * 100).toFixed(2) + '%',
-                theta_max: (Math.max(...thetaValues) * 100).toFixed(2) + '%',
-                theta_avg: ((thetaValues.reduce((a, b) => a + b, 0) / thetaValues.length) * 100).toFixed(2) + '%',
-                final_status: zoneLogs[zoneLogs.length - 1]?.status,
-                final_urgency: zoneLogs[zoneLogs.length - 1]?.urgency
-            };
-        });
-
-        return {
-            byZone,
-            totalDataPoints: this.logs.length,
-            phasesExecuted: [...new Set(this.logs.map(l => l.phase))].filter(Boolean)
-        };
-    },
-
-    exportLogs: function () {
-        return this.logs;
-    }
-};
 
 // =============================================================================
 // MAIN APP CONTROLLER
@@ -958,6 +317,7 @@ const App = {
         chartMetric: 'theta_pct',
         chartRangeHours: 24,
         currentSample: null,
+        hasData: false,
         selectedZone: null,  // No zone selected by default
         problemFirst: false,
         mapZoom: 1,
@@ -981,33 +341,11 @@ const App = {
             I18n.init();
         }
 
-        if (!window.HARDWARE_MODE) {
-            // Mock mode: seed simulation data (Issue 3)
-            MockAPI.init();
-            await this.loadThresholdsData();
-            this.loadSettings();
-
-            // Set default planting date
-            if (!this.state.settings.plantingDate) {
-                const d = new Date();
-                d.setDate(d.getDate() - 45);
-                this.state.settings.plantingDate = d.toISOString().split('T')[0];
-            }
-            if (!this.state.settings.planting_ts && this.state.settings.plantingDate) {
-                this.state.settings.planting_ts = Math.floor(new Date(this.state.settings.plantingDate).getTime() / 1000);
-            }
-
-            this.applyThresholdConfig();
-            this.persistCanonicalSettings();
-            MockAPI.seed();
-        } else {
-            // Hardware mode: load config from hub, no mock data (Issue 3)
-            await this.loadThresholdsData();
-            await this.loadPrefsFromHub();
-            this.applyThresholdConfig();
-            await this.initFromHardware();
-            this.startHardwarePolling();
-        }
+        await this.loadThresholdsData();
+        await this.loadPrefsFromHub();
+        this.applyThresholdConfig();
+        await this.initFromHardware();
+        this.startHardwarePolling();
 
         // Issue 9: warn if onboarding incomplete
         const prefs = await this.loadPrefsFromHub();
@@ -1023,15 +361,7 @@ const App = {
         this.syncBottomNav('home');
         this.updateData();
 
-        // Polling loop (mock mode)
-        if (!window.HARDWARE_MODE) {
-            setInterval(() => this.updateData(), 3000);
-        }
-
-        Logger.log('UI', 'App initialization complete', {
-            hardware: !!window.HARDWARE_MODE,
-            zones: Object.keys(MockAPI.zones).length
-        });
+        Logger.log('UI', 'App initialization complete');
     },
 
     // Issue 3: fetch current state from hardware on startup
@@ -1040,8 +370,12 @@ const App = {
             const data = await RealAPI.getLatest();
             if (data) {
                 this.state.currentSample = data;
+                this.state.hasData = true;
+            } else {
+                this.state.hasData = false;
             }
         } catch (e) {
+            this.state.hasData = false;
             Logger.log('ERROR', 'initFromHardware failed', e);
         }
     },
@@ -1099,14 +433,11 @@ const App = {
 
     updateData: async function () {
         try {
-            const sample = window.HARDWARE_MODE
-                ? await DataSource.getLatest(this.state.selectedZone)
-                : await DataSource.getCurrent(this.state.selectedZone);
+            const sample = await RealAPI.getLatest(this.state.selectedZone);
             if (sample) {
                 this.state.currentSample = sample;
-                const series = window.HARDWARE_MODE
-                    ? await DataSource.getSeries(this.state.selectedZone)
-                    : await DataSource.getSeries(this.state.selectedZone);
+                this.state.hasData = true;
+                const series = await RealAPI.getSeries(this.state.selectedZone);
                 this.state.history = series || [];
                 this.render();
             }
@@ -1185,6 +516,40 @@ const App = {
         document.querySelectorAll('.settings-panel').forEach((panel) => {
             panel.classList.toggle('active', panel.dataset.settingsPanel === tabName);
         });
+        if (tabName === 'device') this.refreshSensorReadings();
+    },
+
+    refreshSensorReadings: async function () {
+        const set = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = val;
+        };
+        set('sr-raw', '…');
+        set('sr-theta', '…');
+        set('sr-temp', '…');
+        set('sr-humidity', '…');
+        set('sr-psi', '…');
+        set('sr-aw', '…');
+        set('sr-status', '…');
+        set('sr-updated', '…');
+        try {
+            const s = await RealAPI.getLatest();
+            if (!s) { set('sr-raw', 'No data'); return; }
+            const minsAgo = s.timestamp
+                ? Math.max(0, Math.round((Date.now() / 1000 - s.timestamp) / 60))
+                : null;
+            set('sr-raw', s.raw_adc != null ? s.raw_adc : '--');
+            set('sr-theta', s.theta != null ? (s.theta * 100).toFixed(1) + '%' : '--');
+            set('sr-temp', s.temp_c != null ? s.temp_c.toFixed(1) + '°C' : '--');
+            set('sr-humidity', (s.humidity != null && s.humidity >= 0) ? s.humidity.toFixed(1) + '%' : '--');
+            set('sr-psi', s.psi_kpa != null ? s.psi_kpa.toFixed(1) + ' kPa' : '--');
+            set('sr-aw', s.aw_mm != null ? s.aw_mm.toFixed(1) + ' mm' : '--');
+            set('sr-status', s.status || '--');
+            set('sr-updated', minsAgo != null ? (minsAgo <= 1 ? 'Just now' : `${minsAgo} min ago`) : '--');
+        } catch (e) {
+            set('sr-raw', 'Error');
+            Logger.log('ERROR', 'refreshSensorReadings failed', e);
+        }
     },
 
     saveSettings: function () {
@@ -1569,6 +934,11 @@ const App = {
 
     renderTier1: function () {
         const s = this.state.currentSample;
+        if (!s || !this.state.hasData) {
+            document.getElementById('dashboard-waiting')?.classList.remove('hidden');
+            return;
+        }
+        document.getElementById('dashboard-waiting')?.classList.add('hidden');
         const greetingEl = document.getElementById('t1-greeting');
         const statusIcon = document.getElementById('t1-status-icon');
         const msgEl = document.getElementById('t1-message');
@@ -1612,10 +982,10 @@ const App = {
         }
         if (moistureEl) moistureEl.textContent = `${moistureState.emoji} ${moistureState.status}`;
         if (tempEl) tempEl.textContent = `${s.temp_c.toFixed(1)}°C`;
-        const allZones = Object.values(MockAPI.getAllZones ? MockAPI.getAllZones() : {});
+        const allZones = Object.values(this.getZoneStatuses());
         const sampledZones = allZones.filter((z) => z.latest).length;
         const healthyZones = allZones.filter((z) => z.latest && this.resolveUrgency(z.latest) === 'low').length;
-        if (zonesEl) zonesEl.textContent = this.tr('sensors_count', { count: Object.keys(MockAPI.zones || {}).length });
+        if (zonesEl) zonesEl.textContent = this.tr('sensors_count', { count: Object.keys(this.getZoneStatuses()).length });
         if (zoneSummaryEl) {
             if (sampledZones === 0) {
                 zoneSummaryEl.textContent = this.tr('collecting_data_from_zones', { count: allZones.length });
@@ -1633,6 +1003,11 @@ const App = {
 
     renderTier2: function () {
         const s = this.state.currentSample;
+        if (!s || !this.state.hasData) {
+            document.getElementById('dashboard-waiting')?.classList.remove('hidden');
+            return;
+        }
+        document.getElementById('dashboard-waiting')?.classList.add('hidden');
         const list = document.getElementById('t2-reasons');
         const titleEl = document.querySelector('#tier-2 .view-header h2');
 
@@ -1683,6 +1058,11 @@ const App = {
 
     renderTier3: function () {
         const s = this.state.currentSample;
+        if (!s || !this.state.hasData) {
+            document.getElementById('dashboard-waiting')?.classList.remove('hidden');
+            return;
+        }
+        document.getElementById('dashboard-waiting')?.classList.add('hidden');
         const moistureState = this.evaluateMoistureStatus(s);
         const thetaPct = (s.theta * 100);
         const targetText = `${moistureState.targetLow.toFixed(0)}-${moistureState.targetHigh.toFixed(0)}%`;
@@ -1693,6 +1073,12 @@ const App = {
         this.setSafeText('t3-confidence', `${Math.round((s.confidence || 0) * 100)}% reliable`);
         this.setSafeText('t3-leaf', s.AW_mm ? `${s.AW_mm.toFixed(1)} mm available` : '--');
         this.setSafeText('t3-depletion', s.fractionDepleted ? `${(s.fractionDepleted * 100).toFixed(0)}% used` : '--');
+        const humidityEl = document.getElementById('t3-humidity');
+        if (humidityEl) {
+            humidityEl.textContent = (s.humidity != null && s.humidity >= 0)
+                ? s.humidity.toFixed(1) + '%'
+                : '--';
+        }
         this.setSafeText('metric-switch-theta', `${thetaPct.toFixed(1)}%`);
         this.setSafeText('metric-switch-temp', `${s.temp_c.toFixed(1)}°C`);
         this.setSafeText('metric-switch-aw', s.AW_mm ? `${s.AW_mm.toFixed(0)}mm` : '--');
@@ -1714,7 +1100,7 @@ const App = {
         this.setSafeText('decision-need', this.tr('decision_need_line', { decision: moistureState.decision }));
         this.setSafeText('decision-next', this.tr('decision_next_line', { detail: moistureState.decisionDetail, hours: moistureState.hoursToAction }));
 
-        const zones = MockAPI.getAllZones();
+        const zones = this.getZoneStatuses();
         let needsAttention = 0;
         Object.values(zones).forEach((z) => {
             if (z.latest) {
@@ -1921,7 +1307,7 @@ const App = {
 
     // --- ZONE GRID ---
     getZoneTrendGlyph: function (zoneId) {
-        const history = MockAPI.zones[zoneId]?.history || [];
+        const history = this.getZoneHistory(zoneId);
         if (history.length < 2) return `→ ${this.tr('zone_trend_stable')}`;
         const latest = history[history.length - 1].theta;
         const prev = history[history.length - 2].theta;
@@ -1978,7 +1364,7 @@ const App = {
     },
 
     updateZoneGridColors: function () {
-        const zones = MockAPI.getAllZones();
+        const zones = this.getZoneStatuses();
 
         Object.keys(zones).forEach(zoneId => {
             const cell = document.getElementById(`zone-${zoneId}`);
@@ -2013,7 +1399,7 @@ const App = {
             return;
         }
 
-        const zones = MockAPI.getAllZones();
+        const zones = this.getZoneStatuses();
         const zone = zones[this.state.selectedZone];
         if (!zone || !zone.latest) {
             detailsEl.style.display = 'none';
@@ -2057,7 +1443,7 @@ const App = {
         const summary = document.getElementById('zone-chart-summary');
         if (!container || !zoneId) return;
 
-        const zoneHistory = (MockAPI.zones[zoneId]?.history || []).slice(-180);
+        const zoneHistory = this.getZoneHistory(zoneId).slice(-180);
         if (zoneHistory.length < 2) {
             container.innerHTML = `<div style="padding:14px;color:#68786f;font-size:0.9rem;">${this.tr('zone_waiting_data')}</div>`;
             if (summary) summary.textContent = this.tr('zone_trend_after_readings');
@@ -2127,23 +1513,6 @@ const App = {
         this.renderZoneGrid();
     },
 
-    // --- SIMULATIONS ---
-    simulateRain: function () {
-        Simulator.simulateRain();
-    },
-
-    simulateDrought: function () {
-        Simulator.simulateDrought();
-    },
-
-    simulateLongRun: function () {
-        Simulator.simulateLongRun();
-    },
-
-    stopSimulation: function () {
-        Simulator.stop();
-    },
-
     // --- EXPORT ---
     exportCSV: function () {
         let csv = "Timestamp,Zone,Raw,Temp,Theta,Theta_Pct,Psi_kPa,AW_mm,Depletion,Status,Urgency,Regime,Confidence\n";
@@ -2159,20 +1528,11 @@ const App = {
         Logger.log('DATA', `Exported ${this.state.history.length} records to CSV`);
     },
 
-    exportSimulationLogs: function () {
-        const logs = Simulator.exportLogs();
-        const json = JSON.stringify(logs, null, 2);
-        this.downloadFile(json, `simulation_logs_${Date.now()}.json`, 'application/json');
-        Logger.log('DATA', `Exported ${logs.length} simulation log entries`);
-    },
-
     exportAllData: function () {
         const data = {
             exportTime: new Date().toISOString(),
             settings: this.state.settings,
-            zones: MockAPI.getAllZones(),
-            allSamples: MockAPI.db,
-            simulationLogs: Simulator.logs,
+            zones: this.getZoneStatuses(),
             systemLogs: Logger.history
         };
 
@@ -2211,6 +1571,25 @@ const App = {
     renderFarmerDashboard: function () {
         const dev = document.getElementById('dev-dashboard');
         if (dev) dev.style.display = 'none';
+    },
+
+    getZoneStatuses: function () {
+        const s = this.state.currentSample;
+        if (!s) return {};
+        const zoneId = s.zoneId || 'HUB';
+        return {
+            [zoneId]: {
+                id: zoneId,
+                active: true,
+                latest: s,
+                history: this.state.history,
+                battery: null
+            }
+        };
+    },
+
+    getZoneHistory: function (zoneId) {
+        return this.state.history.filter(h => !h.zoneId || h.zoneId === zoneId);
     },
 
     // Issue 14: render full developer dashboard
@@ -2304,11 +1683,6 @@ const App = {
         const panel = document.getElementById('dev-panel-storage');
         if (!panel) return;
 
-        if (!window.HARDWARE_MODE) {
-            panel.innerHTML = '<em>Storage panel available in hardware mode only.</em>';
-            return;
-        }
-
         try {
             const res = await fetch('/api/storage');
             if (!res.ok) throw new Error('storage API error');
@@ -2332,30 +1706,16 @@ const App = {
     },
 
     downloadLogs: async function () {
-        if (window.HARDWARE_MODE) {
-            window.location.href = '/api/logs/download';
-        } else {
-            const data = MockAPI.db.map(s => `${s.timestamp},${s.theta},${s.status}`).join('\n');
-            const blob = new Blob(['timestamp,theta,status\n' + data], { type: 'text/csv' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'agriscan_logs.csv';
-            a.click();
-        }
+        window.location.href = '/api/logs/download';
     },
 
     clearLogs: async function () {
         if (!confirm('Clear all sensor logs? This cannot be undone.')) return;
-        if (window.HARDWARE_MODE) {
-            try {
-                await fetch('/api/logs/clear', { method: 'DELETE' });
-                this.renderStoragePanel();
-            } catch (e) {
-                Logger.log('ERROR', 'clearLogs failed', e);
-            }
-        } else {
-            MockAPI.db = [];
-            Logger.log('DATA', 'Mock logs cleared');
+        try {
+            await fetch('/api/logs/clear', { method: 'DELETE' });
+            this.renderStoragePanel();
+        } catch (e) {
+            Logger.log('ERROR', 'clearLogs failed', e);
         }
     },
 
@@ -2370,16 +1730,6 @@ const App = {
         close.onclick = () => banner.remove();
         banner.appendChild(close);
         container.insertBefore(banner, container.firstChild);
-    },
-
-    resetSimulationState: function () {
-        Simulator.stop();
-        Simulator.logs = [];
-        Simulator.tickCount = 0;
-        Simulator.currentPhase = 'IDLE';
-        const simCountdown = document.getElementById('sim-countdown');
-        if (simCountdown) simCountdown.style.display = 'none';
-        Logger.log('SIMULATION', 'Simulation state reset');
     },
 
     bindMobileGestures: function () {
@@ -2466,7 +1816,7 @@ const App = {
     },
 
     cycleZone: function (direction) {
-        const activeIds = Object.keys(MockAPI.zones);
+        const activeIds = Object.keys(this.getZoneStatuses());
         if (activeIds.length === 0) return;
         const currentIdx = this.state.selectedZone ? activeIds.indexOf(this.state.selectedZone) : 0;
         const nextIdx = ((currentIdx + direction) % activeIds.length + activeIds.length) % activeIds.length;
@@ -2573,9 +1923,9 @@ const App = {
 window.appStartTime = Date.now();
 
 window.App = App;
-window.Simulator = Simulator;
 window.Logger = Logger;
-window.MockAPI = MockAPI;
 window.PhysicsEventLogger = PhysicsEventLogger;
 
-document.addEventListener('DOMContentLoaded', () => App.init());
+if (!window.__devDashboard) {
+    document.addEventListener('DOMContentLoaded', () => App.init());
+}
