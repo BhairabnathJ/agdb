@@ -322,6 +322,8 @@ const App = {
         problemFirst: false,
         mapZoom: 1,
         history: [],
+        pairedDevices: [],
+        allZoneData: {},
         settings: {
             tempUnit: 'c',
             threshCritical: 30,
@@ -377,6 +379,29 @@ const App = {
         } catch (e) {
             this.state.hasData = false;
             Logger.log('ERROR', 'initFromHardware failed', e);
+        }
+        await this.refreshAllZoneData();
+    },
+
+    refreshAllZoneData: async function () {
+        if (!window.HARDWARE_MODE) return;
+        try {
+            const devices = await RealAPI.getAllZones();
+            if (!Array.isArray(devices)) return;
+            const paired = devices.filter(d => d.paired === true);
+            this.state.pairedDevices = paired;
+            const zoneDataMap = {};
+            await Promise.all(paired.map(async (device) => {
+                const zoneId = device.mac || device.id;
+                try {
+                    const data = await RealAPI.getLatest(zoneId);
+                    if (data) zoneDataMap[zoneId] = data;
+                } catch (_) {}
+            }));
+            this.state.allZoneData = zoneDataMap;
+            Logger.log('ZONE', `Loaded data for ${paired.length} paired sensors`);
+        } catch (e) {
+            Logger.log('ERROR', 'refreshAllZoneData failed', e);
         }
     },
 
@@ -444,6 +469,7 @@ const App = {
         } catch (e) {
             Logger.log('ERROR', 'updateData failed', e);
         }
+        await this.refreshAllZoneData();
     },
 
     // --- NAVIGATION ---
@@ -1575,6 +1601,24 @@ const App = {
 
     getZoneStatuses: function () {
         const s = this.state.currentSample;
+        // Multi-zone: use all paired devices with their individual data
+        if (this.state.pairedDevices.length > 0) {
+            const result = {};
+            this.state.pairedDevices.forEach(device => {
+                const zoneId = device.mac || device.id;
+                const zoneData = this.state.allZoneData[zoneId] || null;
+                const isCurrentZone = s && (s.zoneId === zoneId || (!s.zoneId && !zoneData));
+                result[zoneId] = {
+                    id: zoneId,
+                    active: device.paired !== false,
+                    latest: isCurrentZone ? s : zoneData,
+                    history: isCurrentZone ? this.state.history : [],
+                    battery: device.battery ?? null
+                };
+            });
+            return result;
+        }
+        // Single-zone fallback
         if (!s) return {};
         const zoneId = s.zoneId || 'HUB';
         return {

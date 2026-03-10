@@ -9,10 +9,11 @@
 
 #include "db_manager.h"
 #include "physics_engine.h"
+#include <Adafruit_AHTX0.h>
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <DHT.h>
 #include <DallasTemperature.h>
+#include <Wire.h>
 #include <ESPAsyncWebServer.h>
 #include <OneWire.h>
 #include <SD.h>
@@ -26,8 +27,9 @@
 
 #define SOIL_PIN 34
 #define TEMP_PIN 4
-#define DHT_PIN  16
-#define DHT_TYPE DHT22
+// AHT30 humidity sensor — I2C: SDA→D21, SCL→D22, VCC→3.3V, GND→GND
+#define AHT30_SDA 21
+#define AHT30_SCL 22
 #define SD_CS 5 // Change if your CS pin is different
 
 // =============================================================================
@@ -39,7 +41,7 @@ DBManager dbManager("/sd/agriscan.db");
 
 OneWire oneWire(TEMP_PIN);
 DallasTemperature tempSensor(&oneWire);
-DHT dht(DHT_PIN, DHT_TYPE);
+Adafruit_AHTX0 aht;
 
 std::vector<SampleData> sampleBuffer;
 const int BATCH_SIZE = 6;
@@ -397,12 +399,13 @@ void setup() {
     Serial.println("❌ DS18B20 NOT found — check wiring + 4.7kΩ pullup");
   }
 
-  dht.begin();
-  float testH = dht.readHumidity();
-  if (!isnan(testH)) {
-    Serial.println("✅ DHT22 CONNECTED — Humidity: " + String(testH, 1) + "%");
+  Wire.begin(AHT30_SDA, AHT30_SCL);
+  if (aht.begin()) {
+    sensors_event_t hEvent, tEvent;
+    aht.getEvent(&hEvent, &tEvent);
+    Serial.println("✅ AHT30 CONNECTED — Humidity: " + String(hEvent.relative_humidity, 1) + "%");
   } else {
-    Serial.println("❌ DHT22 NOT found — check wiring on GPIO 16");
+    Serial.println("❌ AHT30 NOT found — check SDA→D21, SCL→D22, VCC→3.3V");
   }
 
   // SD card
@@ -549,8 +552,10 @@ void loop() {
     float temp = tempSensor.getTempCByIndex(0);
     if (temp == DEVICE_DISCONNECTED_C)
       temp = 25.0f;
-    float h = dht.readHumidity();
-    float humidity = isnan(h) ? -1.0f : h;
+    sensors_event_t hEvent, tEvent;
+    aht.getEvent(&hEvent, &tEvent);
+    float humidity = (hEvent.relative_humidity >= 0.0f && hEvent.relative_humidity <= 100.0f)
+                     ? hEvent.relative_humidity : -1.0f;
 
     time_t ts = time(nullptr);
     if (ts < 1000000)
