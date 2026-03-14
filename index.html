@@ -477,10 +477,10 @@
     <script src="js/physics.js"></script>
     <script src="js/i18n.js"></script>
     <script>
-        // Issue 3: detect hardware mode via query param
+        // Hardware mode is on by default; append ?mock=true to disable
         (function () {
             const params = new URLSearchParams(window.location.search);
-            window.HARDWARE_MODE = params.get('hardware') === 'true';
+            window.HARDWARE_MODE = params.get('mock') !== 'true';
         })();
     </script>
     <script>

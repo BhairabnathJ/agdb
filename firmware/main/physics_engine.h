@@ -270,6 +270,7 @@ public:
 
     void             update(DataPoint& point, DataPoint* history, int historyLen);
     CalibrationResult getCalibrationState();
+    void restoreCalibrationState(const CalibrationResult& r);
 
     float theta_fc_star     = -1.0f;   // -1 = not yet set
     float theta_refill_star = -1.0f;
@@ -333,6 +334,7 @@ public:
 
     // Getters for external use
     CalibrationResult getCalibrationState();
+    void              restoreCalibrationState(const CalibrationResult& r);
     int               historyLen() { return _historyLen; }
     DataPoint*        getHistory() { return _history; }
 

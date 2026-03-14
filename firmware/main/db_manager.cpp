@@ -140,6 +140,43 @@ SampleData DBManager::getLatestSample() {
   return s;
 }
 
+std::vector<SampleData> DBManager::getRecentSamples(int n) {
+  std::vector<SampleData> res;
+  sqlite3_stmt *stmt;
+  const char *sql =
+      "SELECT id, timestamp, raw_adc, temp_c, theta, theta_fc, theta_refill, "
+      "psi_kpa, aw_mm, fraction_depleted, drying_rate, regime, status, "
+      "urgency, confidence, qc_valid, seq "
+      "FROM samples ORDER BY timestamp DESC LIMIT ?";
+
+  if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+    sqlite3_bind_int(stmt, 1, n);
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+      SampleData s = {};
+      s.id                 = sqlite3_column_int(stmt, 0);
+      s.timestamp          = sqlite3_column_int64(stmt, 1);
+      s.raw_adc            = sqlite3_column_int(stmt, 2);
+      s.temp_c             = sqlite3_column_double(stmt, 3);
+      s.theta              = sqlite3_column_double(stmt, 4);
+      s.theta_fc           = sqlite3_column_double(stmt, 5);
+      s.theta_refill       = sqlite3_column_double(stmt, 6);
+      s.psi_kpa            = sqlite3_column_double(stmt, 7);
+      s.aw_mm              = sqlite3_column_double(stmt, 8);
+      s.fraction_depleted  = sqlite3_column_double(stmt, 9);
+      s.drying_rate        = sqlite3_column_double(stmt, 10);
+      s.regime   = String((const char *)sqlite3_column_text(stmt, 11));
+      s.status   = String((const char *)sqlite3_column_text(stmt, 12));
+      s.urgency  = String((const char *)sqlite3_column_text(stmt, 13));
+      s.confidence         = sqlite3_column_double(stmt, 14);
+      s.qc_valid           = sqlite3_column_int(stmt, 15) != 0;
+      s.seq                = sqlite3_column_int(stmt, 16);
+      res.push_back(s);
+    }
+  }
+  sqlite3_finalize(stmt);
+  return res;
+}
+
 std::vector<SampleData> DBManager::getSamplesInRange(time_t start, time_t end) {
   std::vector<SampleData> res;
   sqlite3_stmt *stmt;

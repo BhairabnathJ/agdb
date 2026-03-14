@@ -288,10 +288,10 @@ const RealAPI = {
         return res.json();
     },
 
-    getSeries: async function (zoneId, hours = 24) {
+    getSeries: async function (zoneId, limit = 144) {
         const url = zoneId
-            ? `/api/series?zone=${encodeURIComponent(zoneId)}&hours=${hours}`
-            : `/api/series?hours=${hours}`;
+            ? `/api/series?zone=${encodeURIComponent(zoneId)}&limit=${limit}`
+            : `/api/series?limit=${limit}`;
         const res = await fetch(url);
         if (!res.ok) throw new Error('RealAPI.getSeries failed');
         return res.json();

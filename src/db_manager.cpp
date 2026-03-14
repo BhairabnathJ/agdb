@@ -113,6 +113,27 @@ SampleData DBManager::getLatestSample() {
   return s;
 }
 
+std::vector<SampleData> DBManager::getRecentSamples(int n) {
+  std::vector<SampleData> res;
+  sqlite3_stmt *stmt;
+  // Inner query fetches N most recent DESC, outer re-sorts ASC for chart order
+  const char *sql =
+      "SELECT timestamp, theta FROM "
+      "(SELECT timestamp, theta FROM samples ORDER BY timestamp DESC LIMIT ?) "
+      "ORDER BY timestamp ASC";
+  if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+    sqlite3_bind_int(stmt, 1, n);
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+      SampleData s = {};
+      s.timestamp = sqlite3_column_int64(stmt, 0);
+      s.theta = sqlite3_column_double(stmt, 1);
+      res.push_back(s);
+    }
+  }
+  sqlite3_finalize(stmt);
+  return res;
+}
+
 std::vector<SampleData> DBManager::getSamplesInRange(time_t start, time_t end) {
   std::vector<SampleData> res;
   sqlite3_stmt *stmt;

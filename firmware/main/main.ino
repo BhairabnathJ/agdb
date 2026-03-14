@@ -13,13 +13,13 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <DallasTemperature.h>
-#include <Wire.h>
 #include <ESPAsyncWebServer.h>
 #include <OneWire.h>
 #include <SD.h>
 #include <WiFi.h>
-#include <esp_now.h>      // Issue 7: ESP-NOW for CropBand pairing
-#include <map>            // Issue 7: per-device physics instances
+#include <Wire.h>
+#include <esp_now.h> // Issue 7: ESP-NOW for CropBand pairing
+#include <map>       // Issue 7: per-device physics instances
 
 // =============================================================================
 // PIN DEFINITIONS
@@ -50,15 +50,15 @@ static uint32_t seqTimestamp = 1000000;
 
 // Issue 7: ESP-NOW CropBand packet format
 typedef struct {
-    uint8_t  version;      // must be 1
-    uint16_t raw_adc;
-    float    temp_c;
-    uint32_t timestamp;
-    uint8_t  crc8;
+  uint8_t version; // must be 1
+  uint16_t raw_adc;
+  float temp_c;
+  uint32_t timestamp;
+  uint8_t crc8;
 } CropBandPacket;
 
 // Issue 7: per-device physics instances
-std::map<String, PhysicsEngine*> deviceEngines;
+std::map<String, PhysicsEngine *> deviceEngines;
 
 // =============================================================================
 // CROP CONFIG
@@ -174,206 +174,233 @@ bool loadThresholds() {
 // ISSUE 11: ADC SENSOR VALIDATION
 // =============================================================================
 
-void logSensorError(const char* flag, float value) {
-    if (!SD.exists("/logs")) SD.mkdir("/logs");
-    File f = SD.open("/logs/sensor_errors.csv", FILE_APPEND);
-    if (f) {
-        f.printf("%lu,%s,%.2f\n", (unsigned long)time(nullptr), flag, value);
-        f.close();
-    }
+void logSensorError(const char *flag, float value) {
+  if (!SD.exists("/logs"))
+    SD.mkdir("/logs");
+  File f = SD.open("/logs/sensor_errors.csv", FILE_APPEND);
+  if (f) {
+    f.printf("%lu,%s,%.2f\n", (unsigned long)time(nullptr), flag, value);
+    f.close();
+  }
 }
 
 bool validateSensorReading(int raw_adc, float temp_c) {
-    if (raw_adc < 200 || raw_adc > 3900) {
-        Serial.printf("[QC] ADC out of range: %d\n", raw_adc);
-        logSensorError("ADC_RANGE", (float)raw_adc);
-        return false;
-    }
-    if (temp_c < -10.0f || temp_c > 60.0f) {
-        Serial.printf("[QC] Temperature out of range: %.1f\n", temp_c);
-        logSensorError("TEMP_RANGE", temp_c);
-        return false;
-    }
-    return true;
+  if (raw_adc < 200 || raw_adc > 3900) {
+    Serial.printf("[QC] ADC out of range: %d\n", raw_adc);
+    logSensorError("ADC_RANGE", (float)raw_adc);
+    return false;
+  }
+  if (temp_c < -10.0f || temp_c > 60.0f) {
+    Serial.printf("[QC] Temperature out of range: %.1f\n", temp_c);
+    logSensorError("TEMP_RANGE", temp_c);
+    return false;
+  }
+  return true;
 }
 
 // =============================================================================
 // ISSUE 2: CALIBRATION PERSISTENCE
 // =============================================================================
 
-void saveCalibration(const String& deviceMac) {
-    if (!SD.exists("/calibration")) SD.mkdir("/calibration");
-    String path = "/calibration/" + deviceMac + ".json";
+void saveCalibration(const String &deviceMac) {
+  if (!SD.exists("/calibration"))
+    SD.mkdir("/calibration");
+  String path = "/calibration/" + deviceMac + ".json";
 
-    PhysicsEngine* eng = nullptr;
-    if (deviceMac == "HUB_ONBOARD") {
-        eng = &Physics;
-    } else {
-        auto it = deviceEngines.find(deviceMac);
-        if (it != deviceEngines.end()) eng = it->second;
-    }
-    if (!eng) return;
+  PhysicsEngine *eng = nullptr;
+  if (deviceMac == "HUB_ONBOARD") {
+    eng = &Physics;
+  } else {
+    auto it = deviceEngines.find(deviceMac);
+    if (it != deviceEngines.end())
+      eng = it->second;
+  }
+  if (!eng)
+    return;
 
-    // Serialize calibration state via ArduinoJson
-    DynamicJsonDocument doc(1024);
-    doc["version"] = 1;
-    JsonObject cal = doc.createNestedObject("autoCalibration");
-    auto calState = eng->getCalibrationState();
-    cal["theta_fc_star"]    = calState.theta_fc_star;
-    cal["theta_refill_star"]= calState.theta_refill_star;
-    cal["n_events"]         = calState.n_events;
-    cal["n_fc_updates"]     = calState.n_fc_updates;
-    cal["confidence"]       = calState.confidence;
+  // Serialize calibration state via ArduinoJson
+  DynamicJsonDocument doc(1024);
+  doc["version"] = 1;
+  JsonObject cal = doc.createNestedObject("autoCalibration");
+  auto calState = eng->getCalibrationState();
+  cal["theta_fc_star"] = calState.theta_fc_star;
+  cal["theta_refill_star"] = calState.theta_refill_star;
+  cal["n_events"] = calState.n_events;
+  cal["n_fc_updates"] = calState.n_fc_updates;
+  cal["confidence"] = calState.confidence;
 
-    File f = SD.open(path, FILE_WRITE);
-    if (f) {
-        serializeJson(doc, f);
-        f.close();
-        Serial.printf("[CAL] Saved calibration for %s\n", deviceMac.c_str());
-    }
+  File f = SD.open(path, FILE_WRITE);
+  if (f) {
+    serializeJson(doc, f);
+    f.close();
+    Serial.printf("[CAL] Saved calibration for %s\n", deviceMac.c_str());
+  }
 }
 
-void loadCalibration(const String& deviceMac) {
-    String path = "/calibration/" + deviceMac + ".json";
-    if (!SD.exists(path)) return;
+void loadCalibration(const String &deviceMac) {
+  String path = "/calibration/" + deviceMac + ".json";
+  if (!SD.exists(path))
+    return;
 
-    File f = SD.open(path, FILE_READ);
-    if (!f) return;
+  File f = SD.open(path, FILE_READ);
+  if (!f)
+    return;
 
-    DynamicJsonDocument doc(1024);
-    if (deserializeJson(doc, f)) {
-        f.close();
-        return;
-    }
+  DynamicJsonDocument doc(1024);
+  if (deserializeJson(doc, f)) {
     f.close();
+    return;
+  }
+  f.close();
 
-    if (doc["version"] != 1) return;
+  if (doc["version"] != 1)
+    return;
 
-    PhysicsEngine* eng = nullptr;
-    if (deviceMac == "HUB_ONBOARD") {
-        eng = &Physics;
-    } else {
-        auto it = deviceEngines.find(deviceMac);
-        if (it != deviceEngines.end()) eng = it->second;
-    }
-    if (!eng) return;
+  PhysicsEngine *eng = nullptr;
+  if (deviceMac == "HUB_ONBOARD") {
+    eng = &Physics;
+  } else {
+    auto it = deviceEngines.find(deviceMac);
+    if (it != deviceEngines.end())
+      eng = it->second;
+  }
+  if (!eng)
+    return;
 
-    JsonObject cal = doc["autoCalibration"];
-    if (!cal.isNull()) {
-        eng->restoreCalibrationState({
-            .theta_fc_star     = cal["theta_fc_star"]     | activeCrop.theta_fc,
-            .theta_refill_star = cal["theta_refill_star"] | activeCrop.theta_refill,
-            .n_events          = cal["n_events"]          | 0,
-            .n_fc_updates      = cal["n_fc_updates"]      | 0,
-            .confidence        = cal["confidence"]        | 0.0f
-        });
-        Serial.printf("[CAL] Restored calibration for %s\n", deviceMac.c_str());
-    }
+  JsonObject cal = doc["autoCalibration"];
+  if (!cal.isNull()) {
+    eng->restoreCalibrationState(
+        {.theta_fc_star = cal["theta_fc_star"] | activeCrop.theta_fc,
+         .theta_refill_star =
+             cal["theta_refill_star"] | activeCrop.theta_refill,
+         .confidence = cal["confidence"] | 0.0f,
+         .n_events = cal["n_events"] | 0,
+         .n_fc_updates = cal["n_fc_updates"] | 0});
+    Serial.printf("[CAL] Restored calibration for %s\n", deviceMac.c_str());
+  }
 }
 
 // =============================================================================
 // ISSUE 7: ESP-NOW CROPBAND PAIRING
 // =============================================================================
 
-uint8_t calcCRC8(const uint8_t* data, size_t len) {
-    uint8_t crc = 0xFF;
-    for (size_t i = 0; i < len; i++) {
-        crc ^= data[i];
-        for (int b = 0; b < 8; b++) {
-            crc = (crc & 0x80) ? (crc << 1) ^ 0x07 : (crc << 1);
-        }
+uint8_t calcCRC8(const uint8_t *data, size_t len) {
+  uint8_t crc = 0xFF;
+  for (size_t i = 0; i < len; i++) {
+    crc ^= data[i];
+    for (int b = 0; b < 8; b++) {
+      crc = (crc & 0x80) ? (crc << 1) ^ 0x07 : (crc << 1);
     }
-    return crc;
+  }
+  return crc;
 }
 
-bool isPairedDevice(const String& mac) {
-    File f = SD.open("/config/paired_devices.json", FILE_READ);
-    if (!f) return false;
-    DynamicJsonDocument doc(4096);
-    if (deserializeJson(doc, f)) { f.close(); return false; }
-    f.close();
-    for (JsonObject dev : doc["devices"].as<JsonArray>()) {
-        if (dev["mac"] == mac && dev["paired"] == true) return true;
-    }
+bool isPairedDevice(const String &mac) {
+  File f = SD.open("/config/paired_devices.json", FILE_READ);
+  if (!f)
     return false;
+  DynamicJsonDocument doc(4096);
+  if (deserializeJson(doc, f)) {
+    f.close();
+    return false;
+  }
+  f.close();
+  for (JsonObject dev : doc["devices"].as<JsonArray>()) {
+    if (dev["mac"] == mac && dev["paired"] == true)
+      return true;
+  }
+  return false;
 }
 
-void registerUnknownDevice(const String& mac) {
-    // Load existing list
-    DynamicJsonDocument doc(4096);
-    File fr = SD.open("/config/paired_devices.json", FILE_READ);
-    if (fr) { deserializeJson(doc, fr); fr.close(); }
-    if (!doc.containsKey("devices")) doc.createNestedArray("devices");
+void registerUnknownDevice(const String &mac) {
+  // Load existing list
+  DynamicJsonDocument doc(4096);
+  File fr = SD.open("/config/paired_devices.json", FILE_READ);
+  if (fr) {
+    deserializeJson(doc, fr);
+    fr.close();
+  }
+  if (!doc.containsKey("devices"))
+    doc.createNestedArray("devices");
 
-    // Check not already present
-    for (JsonObject dev : doc["devices"].as<JsonArray>()) {
-        if (dev["mac"] == mac) return; // already registered
-    }
+  // Check not already present
+  for (JsonObject dev : doc["devices"].as<JsonArray>()) {
+    if (dev["mac"] == mac)
+      return; // already registered
+  }
 
-    JsonObject entry = doc["devices"].createNestedObject();
-    entry["mac"]    = mac;
-    entry["paired"] = false;
+  JsonObject entry = doc["devices"].createNestedObject();
+  entry["mac"] = mac;
+  entry["paired"] = false;
 
-    File fw = SD.open("/config/paired_devices.json", FILE_WRITE);
-    if (fw) { serializeJson(doc, fw); fw.close(); }
-    Serial.printf("[ESPNOW] New device seen: %s\n", mac.c_str());
+  File fw = SD.open("/config/paired_devices.json", FILE_WRITE);
+  if (fw) {
+    serializeJson(doc, fw);
+    fw.close();
+  }
+  Serial.printf("[ESPNOW] New device seen: %s\n", mac.c_str());
 }
 
-void runPhysicsForDevice(int raw_adc, float temp_c, time_t ts, const String& deviceId) {
-    if (deviceEngines.find(deviceId) == deviceEngines.end()) {
-        deviceEngines[deviceId] = new PhysicsEngine();
-        if (activeCrop.loaded) {
-            deviceEngines[deviceId]->configureCropSoil(
-                activeCrop.crop_key.c_str(), activeCrop.soil_key.c_str(), activeCrop.p,
-                activeCrop.theta_fc, activeCrop.theta_wp, activeCrop.theta_refill,
-                (long)(time(nullptr) - activeCrop.days_after_planting * 86400L));
-        }
+void runPhysicsForDevice(int raw_adc, float temp_c, time_t ts,
+                         const String &deviceId) {
+  if (deviceEngines.find(deviceId) == deviceEngines.end()) {
+    deviceEngines[deviceId] = new PhysicsEngine();
+    if (activeCrop.loaded) {
+      deviceEngines[deviceId]->configureCropSoil(
+          activeCrop.crop_key.c_str(), activeCrop.soil_key.c_str(),
+          activeCrop.p, activeCrop.theta_fc, activeCrop.theta_wp,
+          activeCrop.theta_refill,
+          (long)(time(nullptr) - activeCrop.days_after_planting * 86400L));
     }
-    PhysicsEngine* eng = deviceEngines[deviceId];
-    SensorReading reading = eng->processSensorReading(raw_adc, temp_c, ts);
-    Serial.printf("[ESPNOW] Device %s theta=%.3f status=%s\n",
-        deviceId.c_str(), reading.theta, reading.status);
-    saveCalibration(deviceId);
+  }
+  PhysicsEngine *eng = deviceEngines[deviceId];
+  SensorReading reading = eng->processSensorReading(raw_adc, temp_c, ts);
+  Serial.printf("[ESPNOW] Device %s theta=%.3f status=%s\n", deviceId.c_str(),
+                reading.theta, reading.status);
+  saveCalibration(deviceId);
 }
 
-void onEspNowReceive(const uint8_t* mac_addr, const uint8_t* data, int len) {
-    if (len < (int)sizeof(CropBandPacket)) return;
+void onEspNowReceive(const esp_now_recv_info *recv_info, const uint8_t *data, int len) {
+  if (len < (int)sizeof(CropBandPacket))
+    return;
 
-    CropBandPacket pkt;
-    memcpy(&pkt, data, sizeof(pkt));
+  CropBandPacket pkt;
+  memcpy(&pkt, data, sizeof(pkt));
 
-    // Validate CRC (over all bytes except last)
-    uint8_t expected = calcCRC8(data, sizeof(pkt) - 1);
-    if (pkt.crc8 != expected) {
-        Serial.println("[ESPNOW] CRC mismatch — packet dropped");
-        return;
-    }
-    if (pkt.version != 1) return;
+  // Validate CRC (over all bytes except last)
+  uint8_t expected = calcCRC8(data, sizeof(pkt) - 1);
+  if (pkt.crc8 != expected) {
+    Serial.println("[ESPNOW] CRC mismatch — packet dropped");
+    return;
+  }
+  if (pkt.version != 1)
+    return;
 
-    // Build MAC string
-    char macStr[18];
-    snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
-        mac_addr[0], mac_addr[1], mac_addr[2],
-        mac_addr[3], mac_addr[4], mac_addr[5]);
-    String macString(macStr);
+  // Build MAC string
+  char macStr[18];
+  snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+           recv_info->src_addr[0], recv_info->src_addr[1], recv_info->src_addr[2],
+           recv_info->src_addr[3], recv_info->src_addr[4], recv_info->src_addr[5]);
+  String macString(macStr);
 
-    if (!isPairedDevice(macString)) {
-        registerUnknownDevice(macString);
-        return; // ignore data from unpaired devices
-    }
+  if (!isPairedDevice(macString)) {
+    registerUnknownDevice(macString);
+    return; // ignore data from unpaired devices
+  }
 
-    time_t ts = (time_t)pkt.timestamp;
-    if (ts < 1000000) ts = time(nullptr);
+  time_t ts = (time_t)pkt.timestamp;
+  if (ts < 1000000)
+    ts = time(nullptr);
 
-    if (validateSensorReading(pkt.raw_adc, pkt.temp_c)) {
-        runPhysicsForDevice(pkt.raw_adc, pkt.temp_c, ts, macString);
-    }
+  if (validateSensorReading(pkt.raw_adc, pkt.temp_c)) {
+    runPhysicsForDevice(pkt.raw_adc, pkt.temp_c, ts, macString);
+  }
 }
 
 void initEspNow() {
-    esp_now_init();
-    esp_now_register_recv_cb(onEspNowReceive);
-    Serial.println("[ESPNOW] Receiver initialized");
+  esp_now_init();
+  esp_now_register_recv_cb(onEspNowReceive);
+  Serial.println("[ESPNOW] Receiver initialized");
 }
 
 // =============================================================================
@@ -400,10 +427,12 @@ void setup() {
   }
 
   Wire.begin(AHT30_SDA, AHT30_SCL);
+  delay(100); // let AHT30 power up
   if (aht.begin()) {
     sensors_event_t hEvent, tEvent;
     aht.getEvent(&hEvent, &tEvent);
-    Serial.println("✅ AHT30 CONNECTED — Humidity: " + String(hEvent.relative_humidity, 1) + "%");
+    Serial.println("✅ AHT30 CONNECTED — Humidity: " +
+                   String(hEvent.relative_humidity, 1) + "%");
   } else {
     Serial.println("❌ AHT30 NOT found — check SDA→D21, SCL→D22, VCC→3.3V");
   }
@@ -480,13 +509,13 @@ void setup() {
   });
 
   server.on("/api/series", HTTP_GET, [](AsyncWebServerRequest *req) {
-    long start = 0, end = 0;
-    if (req->hasParam("start"))
-      start = req->getParam("start")->value().toInt();
-    if (req->hasParam("end"))
-      end = req->getParam("end")->value().toInt();
+    int limit = 144;
+    if (req->hasParam("limit"))
+      limit = req->getParam("limit")->value().toInt();
+    if (limit < 1 || limit > 200)
+      limit = 144;
 
-    auto series = dbManager.getSamplesInRange(start, end);
+    auto series = dbManager.getRecentSamples(limit);
     String json = "[";
     for (size_t i = 0; i < series.size(); i++) {
       if (i > 0)
@@ -498,15 +527,127 @@ void setup() {
     req->send(200, "application/json", json);
   });
 
+  server.on("/api/devices", HTTP_GET, [](AsyncWebServerRequest *req) {
+    DynamicJsonDocument doc(4096);
+    File f = SD.open("/config/paired_devices.json", FILE_READ);
+    if (f) {
+      deserializeJson(doc, f);
+      f.close();
+    }
+    if (!doc.containsKey("devices"))
+      doc.createNestedArray("devices");
+
+    String json = "[";
+    bool first = true;
+    for (JsonObject dev : doc["devices"].as<JsonArray>()) {
+      if (!first)
+        json += ",";
+      first = false;
+      String mac = dev["mac"] | "";
+      bool paired = dev["paired"] | false;
+      bool online = (deviceEngines.find(mac) != deviceEngines.end());
+      json += "{\"mac\":\"" + mac + "\",";
+      json += "\"paired\":" + String(paired ? "true" : "false") + ",";
+      json += "\"online\":" + String(online ? "true" : "false") + "}";
+    }
+    json += "]";
+    req->send(200, "application/json", json);
+  });
+
+  server.on("/api/devices/approve", HTTP_POST, [](AsyncWebServerRequest *req) {
+    if (!req->hasParam("mac")) {
+      req->send(400, "application/json", "{\"error\":\"mac param required\"}");
+      return;
+    }
+    String mac = req->getParam("mac")->value();
+
+    DynamicJsonDocument doc(4096);
+    File fr = SD.open("/config/paired_devices.json", FILE_READ);
+    if (fr) {
+      deserializeJson(doc, fr);
+      fr.close();
+    }
+    if (!doc.containsKey("devices"))
+      doc.createNestedArray("devices");
+
+    bool found = false;
+    for (JsonObject dev : doc["devices"].as<JsonArray>()) {
+      if (dev["mac"] == mac) {
+        dev["paired"] = true;
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      req->send(404, "application/json", "{\"error\":\"device not found\"}");
+      return;
+    }
+    File fw = SD.open("/config/paired_devices.json", FILE_WRITE);
+    if (!fw) {
+      req->send(500, "application/json", "{\"error\":\"write failed\"}");
+      return;
+    }
+    serializeJson(doc, fw);
+    fw.close();
+    Serial.printf("[PAIR] Approved %s\n", mac.c_str());
+    req->send(200, "application/json", "{\"success\":true}");
+  });
+
+  server.on("/api/config", HTTP_GET, [](AsyncWebServerRequest *req) {
+    File f = SD.open("/config/user_prefs.json", FILE_READ);
+    if (!f) {
+      req->send(200, "application/json", "{\"onboarding_complete\":false}");
+      return;
+    }
+    String content = f.readString();
+    f.close();
+    req->send(200, "application/json", content);
+  });
+
+  server.on(
+      "/api/config", HTTP_POST,
+      [](AsyncWebServerRequest *req) {
+        req->send(200, "application/json", "{\"success\":true}");
+      },
+      nullptr,
+      [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index,
+         size_t total) {
+        static String configBody;
+        if (index == 0)
+          configBody = "";
+        for (size_t i = 0; i < len; i++)
+          configBody += (char)data[i];
+        if (index + len >= total) {
+          File f = SD.open("/config/user_prefs.json", FILE_WRITE);
+          if (f) {
+            f.print(configBody);
+            f.close();
+          }
+          loadThresholds();
+        }
+      });
+
+  server.on("/api/diagnostics", HTTP_GET, [](AsyncWebServerRequest *req) {
+    String json = "{";
+    json += "\"free_heap\":" + String(ESP.getFreeHeap()) + ",";
+    json += "\"uptime_s\":" + String(millis() / 1000) + ",";
+    json += "\"sample_count\":" + String(seqTimestamp - 1000000) + ",";
+    json += "\"crop\":\"" + activeCrop.crop_key + "\",";
+    json += "\"soil\":\"" + activeCrop.soil_key + "\",";
+    json += "\"paired_devices\":" + String(deviceEngines.size());
+    json += "}";
+    req->send(200, "application/json", json);
+  });
+
   // Issue 13: SD card storage management endpoints
   server.on("/api/storage", HTTP_GET, [](AsyncWebServerRequest *req) {
     uint64_t total = SD.totalBytes();
-    uint64_t used  = SD.usedBytes();
+    uint64_t used = SD.usedBytes();
     uint64_t free_ = total - used;
     String json = "{";
     json += "\"total_mb\":" + String((float)total / 1048576.0f, 1) + ",";
-    json += "\"used_mb\":"  + String((float)used  / 1048576.0f, 1) + ",";
-    json += "\"free_mb\":"  + String((float)free_ / 1048576.0f, 1);
+    json += "\"used_mb\":" + String((float)used / 1048576.0f, 1) + ",";
+    json += "\"free_mb\":" + String((float)free_ / 1048576.0f, 1);
     json += "}";
     req->send(200, "application/json", json);
   });
@@ -520,7 +661,8 @@ void setup() {
   });
 
   server.on("/api/logs/clear", HTTP_DELETE, [](AsyncWebServerRequest *req) {
-    if (SD.exists("/logs/readings.csv")) SD.remove("/logs/readings.csv");
+    if (SD.exists("/logs/readings.csv"))
+      SD.remove("/logs/readings.csv");
     // Recreate with header row
     File f = SD.open("/logs/readings.csv", FILE_WRITE);
     if (f) {
@@ -554,8 +696,10 @@ void loop() {
       temp = 25.0f;
     sensors_event_t hEvent, tEvent;
     aht.getEvent(&hEvent, &tEvent);
-    float humidity = (hEvent.relative_humidity >= 0.0f && hEvent.relative_humidity <= 100.0f)
-                     ? hEvent.relative_humidity : -1.0f;
+    float humidity =
+        (hEvent.relative_humidity >= 0.0f && hEvent.relative_humidity <= 100.0f)
+            ? hEvent.relative_humidity
+            : -1.0f;
 
     time_t ts = time(nullptr);
     if (ts < 1000000)

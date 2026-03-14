@@ -613,6 +613,15 @@ CalibrationResult AutoCalibration::getCalibrationState() {
     return r;
 }
 
+void AutoCalibration::restoreCalibrationState(const CalibrationResult& r) {
+    if (r.theta_fc_star > 0)     theta_fc_star     = r.theta_fc_star;
+    if (r.theta_refill_star > 0) theta_refill_star = r.theta_refill_star;
+    state       = r.state;
+    confidence  = r.confidence;
+    stats.n_events     = r.n_events;
+    stats.n_fc_updates = r.n_fc_updates;
+}
+
 const char* AutoCalibration::stateToString(CalibrationState s) {
     switch (s) {
         case CAL_INIT:                 return "INIT";
@@ -850,4 +859,8 @@ DrainageQuality PhysicsEngine::assessDrainageQuality() {
 
 CalibrationResult PhysicsEngine::getCalibrationState() {
     return autoCalibration.getCalibrationState();
+}
+
+void PhysicsEngine::restoreCalibrationState(const CalibrationResult& r) {
+    autoCalibration.restoreCalibrationState(r);
 }
