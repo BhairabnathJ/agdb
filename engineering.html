@@ -338,6 +338,7 @@
     // ── History buffers (shared x-axis labels) ──────────────────────────────
     const labels = [];
     const thetaData = [];
+    const thetaData2 = [];
     const thetaFcData  = [];
     const thetaRefill  = [];
     const thetaSatData = [];
@@ -442,7 +443,7 @@
           labels,
           datasets: [
             {
-              label: 'θ (VWC)',
+              label: 'θ Sensor 1',
               data: thetaData,
               borderColor: '#58a6ff',
               backgroundColor: 'rgba(88,166,255,0.07)',
@@ -450,6 +451,17 @@
               pointRadius: 2,
               tension: 0.3,
               fill: true,
+              yAxisID: 'y'
+            },
+            {
+              label: 'θ Sensor 2',
+              data: thetaData2,
+              borderColor: '#a78bfa',
+              backgroundColor: 'rgba(167,139,250,0.07)',
+              borderWidth: 2,
+              pointRadius: 2,
+              tension: 0.3,
+              fill: false,
               yAxisID: 'y'
             },
             {
@@ -578,6 +590,7 @@
 
       labels.push(label);
       thetaData.push(data.theta ?? null);
+      thetaData2.push((data.theta_2 != null && data.theta_2 >= 0) ? data.theta_2 : null);
       thetaFcData.push(data.theta_fc ?? null);
       thetaRefill.push(data.theta_refill ?? null);
       thetaSatData.push(data.theta_sat ?? 0.45);
@@ -589,6 +602,7 @@
       if (labels.length > MAX_PTS) {
         labels.shift();
         thetaData.shift();
+        thetaData2.shift();
         thetaFcData.shift();
         thetaRefill.shift();
         thetaSatData.shift();

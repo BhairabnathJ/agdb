@@ -23,10 +23,20 @@ struct ColDef {
 
 // Single-pass migration: reads PRAGMA table_info once, then ALTER TABLEs any
 // column from `cols` that is absent.  Safe to re-run on every boot.
+// Fresh databases created with the full CREATE TABLE will have all columns
+// already present, so no ALTERs will run.  Old databases get each missing
+// column added one at a time as a fallback.
+// Error handling:
+//   - "duplicate column" → silent (PRAGMA check should prevent this, but
+//     handle it defensively without alarming the log)
+//   - any other failure (including parser stack overflow) → log warning and
+//     continue; never blocks boot
 static void migrateTable(sqlite3 *db, const char *table,
                          const ColDef *cols, int nCols) {
-  bool found[24] = {};
-  int  check = nCols < 24 ? nCols : 24;
+  // Cap at 32 to accommodate future column additions without code changes
+  static const int MAX_COLS = 32;
+  bool found[MAX_COLS] = {};
+  int  check = nCols < MAX_COLS ? nCols : MAX_COLS;
 
   char pragma[64];
   snprintf(pragma, sizeof(pragma), "PRAGMA table_info(%s)", table);
@@ -49,12 +59,23 @@ static void migrateTable(sqlite3 *db, const char *table,
     snprintf(sql, sizeof(sql), "ALTER TABLE %s ADD COLUMN %s %s",
              table, cols[i].name, cols[i].definition);
     char *err = nullptr;
-    if (sqlite3_exec(db, sql, nullptr, nullptr, &err) == SQLITE_OK) {
+    int rc = sqlite3_exec(db, sql, nullptr, nullptr, &err);
+    if (rc == SQLITE_OK) {
       Serial.printf("[DB] %s: added column %s\n", table, cols[i].name);
     } else {
-      Serial.printf("[DB] %s + %s failed: %s\n", table, cols[i].name,
-                    err ? err : "?");
-      sqlite3_free(err);
+      // "duplicate column name" is harmless — the column already exists
+      // despite not appearing in PRAGMA (can happen on corrupt table_info).
+      // Anything else (stack overflow, locked DB, etc.) is unexpected but
+      // must not block boot — log and move on.
+      const char *msg = err ? err : sqlite3_errmsg(db);
+      if (strstr(msg, "duplicate column") != nullptr) {
+        Serial.printf("[DB] %s.%s already exists (harmless)\n",
+                      table, cols[i].name);
+      } else {
+        Serial.printf("[DB] WARN: %s + %s failed: %s — skipping\n",
+                      table, cols[i].name, msg);
+      }
+      if (err) sqlite3_free(err);
     }
   }
 }
@@ -82,7 +103,8 @@ bool DBManager::init() {
       "theta_fc REAL, theta_refill REAL, psi_kpa REAL, aw_mm REAL, "
       "fraction_depleted REAL, drying_rate REAL, regime TEXT, status TEXT, "
       "urgency TEXT, confidence REAL, qc_valid INTEGER, seq INTEGER, "
-      "air_temp_c REAL DEFAULT -1);"
+      "air_temp_c REAL DEFAULT -1, humidity REAL DEFAULT -1, "
+      "raw_adc_2 INTEGER DEFAULT -1, theta_2 REAL DEFAULT -1);"
       "CREATE INDEX IF NOT EXISTS idx_timestamp ON samples(timestamp);"
       "CREATE TABLE IF NOT EXISTS calibration ("
       "version INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER, state "
@@ -93,8 +115,11 @@ bool DBManager::init() {
   if (!executeSQL(tableSQL))
     return false;
 
-  // 3b. Schema migration — adds columns missing from databases created before
-  //     a schema change.  New columns are appended; no data is lost.
+  // 3b. Schema migration — fallback for databases created before the current
+  //     schema.  Fresh databases already have all columns from CREATE TABLE
+  //     above, so migrateTable will find every column present and run zero
+  //     ALTERs.  Old databases get only the missing columns added.
+  //     ALTER failures are non-fatal; see migrateTable() for details.
   static const ColDef samplesCols[] = {
     {"timestamp",         "INTEGER NOT NULL DEFAULT 0"},
     {"raw_adc",           "INTEGER DEFAULT 0"},
@@ -113,6 +138,9 @@ bool DBManager::init() {
     {"qc_valid",          "INTEGER DEFAULT 0"},
     {"seq",               "INTEGER DEFAULT 0"},
     {"air_temp_c",        "REAL DEFAULT -1"},
+    {"humidity",          "REAL DEFAULT -1"},
+    {"raw_adc_2",         "INTEGER DEFAULT -1"},
+    {"theta_2",           "REAL DEFAULT -1"},
   };
   migrateTable(db, "samples", samplesCols,
                sizeof(samplesCols) / sizeof(samplesCols[0]));
@@ -139,8 +167,9 @@ bool DBManager::prepareStatements() {
       "INSERT INTO samples "
       "(timestamp, raw_adc, temp_c, theta, theta_fc, theta_refill, "
       "psi_kpa, aw_mm, fraction_depleted, drying_rate, regime, "
-      "status, urgency, confidence, qc_valid, seq, air_temp_c) "
-      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+      "status, urgency, confidence, qc_valid, seq, air_temp_c, humidity, "
+      "raw_adc_2, theta_2) "
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
   int rc = sqlite3_prepare_v2(db, sql, -1, &insertStmt, nullptr);
   if (rc != SQLITE_OK) {
@@ -180,6 +209,9 @@ bool DBManager::writeSampleBatch(std::vector<SampleData> &samples) {
     sqlite3_bind_int(insertStmt, 15, s.qc_valid ? 1 : 0);
     sqlite3_bind_int(insertStmt, 16, s.seq);
     sqlite3_bind_double(insertStmt, 17, s.air_temp_c);
+    sqlite3_bind_double(insertStmt, 18, s.humidity);
+    sqlite3_bind_int(insertStmt, 19, s.raw_adc_2);
+    sqlite3_bind_double(insertStmt, 20, s.theta_2);
 
     if (sqlite3_step(insertStmt) != SQLITE_DONE) {
       Serial.printf("Insert Step Error: %s\n", sqlite3_errmsg(db));
@@ -233,7 +265,8 @@ std::vector<SampleData> DBManager::getRecentSamples(int n) {
   const char *sql =
       "SELECT id, timestamp, raw_adc, temp_c, theta, theta_fc, theta_refill, "
       "psi_kpa, aw_mm, fraction_depleted, drying_rate, regime, status, "
-      "urgency, confidence, qc_valid, seq, air_temp_c "
+      "urgency, confidence, qc_valid, seq, air_temp_c, humidity, "
+      "raw_adc_2, theta_2 "
       "FROM samples ORDER BY timestamp DESC LIMIT ?";
 
   if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
@@ -258,6 +291,9 @@ std::vector<SampleData> DBManager::getRecentSamples(int n) {
       s.qc_valid           = sqlite3_column_int(stmt, 15) != 0;
       s.seq                = sqlite3_column_int(stmt, 16);
       s.air_temp_c         = sqlite3_column_double(stmt, 17);
+      s.humidity           = sqlite3_column_double(stmt, 18);
+      s.raw_adc_2          = sqlite3_column_int(stmt, 19);
+      s.theta_2            = sqlite3_column_double(stmt, 20);
       res.push_back(s);
     }
   }

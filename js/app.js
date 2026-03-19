@@ -1108,6 +1108,7 @@ const App = {
         this.setSafeText('metric-switch-theta', `${thetaPct.toFixed(1)}%`);
         this.setSafeText('metric-switch-temp', `${s.temp_c.toFixed(1)}°C`);
         this.setSafeText('metric-switch-aw', s.AW_mm ? `${s.AW_mm.toFixed(0)}mm` : '--');
+        this.setSafeText('metric-switch-humidity', (s.humidity != null && s.humidity >= 0) ? `${s.humidity.toFixed(1)}%` : '--');
         this.setSafeText('t3-moist-context', this.tr('t3_target_status', { low: moistureState.targetLow.toFixed(0), high: moistureState.targetHigh.toFixed(0), status: moistureState.status }));
         this.setSafeText('t3-temp-context', s.temp_c > 32 ? this.tr('t3_crop_comfort_heat') : (s.temp_c < 12 ? this.tr('t3_crop_comfort_cool') : this.tr('t3_crop_comfort_good')));
         this.setSafeText('t3-confidence-context', (s.confidence || 0) >= 0.75 ? this.tr('t3_accuracy_good') : this.tr('t3_accuracy_moderate'));
@@ -1185,6 +1186,14 @@ const App = {
                 domain: (vals) => ({ min: Math.floor(Math.min(...vals, 0) / 5) * 5, max: Math.ceil(Math.max(...vals, 35) / 5) * 5 }),
                 status: (v) => (v < 10 || v > 34 ? 'critical' : (v < 15 || v > 30 ? 'warning' : 'healthy')),
                 bands: [{ from: 15, to: 30, color: 'rgba(95,141,78,0.10)' }, { from: 10, to: 15, color: 'rgba(244,162,97,0.12)' }, { from: 30, to: 34, color: 'rgba(244,162,97,0.12)' }, { from: 34, to: null, color: 'rgba(231,111,81,0.12)' }]
+            },
+            humidity: {
+                title: 'Air Humidity',
+                unit: '%',
+                value: (h) => (h.humidity != null && h.humidity >= 0) ? h.humidity : null,
+                domain: () => ({ min: 0, max: 100 }),
+                status: (v) => (v < 30 ? 'warning' : (v > 90 ? 'warning' : 'healthy')),
+                bands: [{ from: 30, to: 90, color: 'rgba(95,141,78,0.10)' }, { from: 0, to: 30, color: 'rgba(244,162,97,0.12)' }, { from: 90, to: 100, color: 'rgba(244,162,97,0.12)' }]
             }
         };
 

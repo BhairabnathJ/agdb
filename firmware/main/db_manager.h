@@ -9,10 +9,12 @@ struct SampleData {
   int id; // AUTOINCREMENT primary key — do not set manually
   time_t timestamp;
   int raw_adc;
+  int raw_adc_2 = -1;
   float temp_c;
   float humidity = -1.0f;
   float air_temp_c = -1.0f;
   float theta;
+  float theta_2 = -1.0f;
   float theta_fc;
   float theta_refill;
   float psi_kpa;

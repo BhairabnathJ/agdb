@@ -25,6 +25,7 @@
 // =============================================================================
 
 #define SOIL_PIN 34
+#define SOIL_SENSOR_2_PIN 35
 #define TEMP_PIN 4
 // DHT22 humidity sensor — Data→GPIO16, 10kΩ pullup to 3.3V
 #define DHT_PIN 16
@@ -50,6 +51,9 @@ static uint32_t seqTimestamp = 1000000;
 static SensorReading lastReading = {};
 static float lastAirTemp = -1.0f;
 static float lastHumidity = -1.0f;
+
+// Sensor 2 calibration instance (ADC → VWC conversion only, independent sensor)
+static SensorCalibration sensor2Cal;
 
 // Issue 7: ESP-NOW CropBand packet format
 typedef struct {
@@ -417,8 +421,13 @@ void setup() {
   // Sensor checks
   int soilRaw = analogRead(SOIL_PIN);
   Serial.println(soilRaw > 0 && soilRaw < 4095
-                     ? "✅ Soil sensor CONNECTED — Raw: " + String(soilRaw)
-                     : "❌ Soil sensor NOT connected");
+                     ? "✅ Soil sensor 1 (GPIO34) CONNECTED — Raw: " + String(soilRaw)
+                     : "❌ Soil sensor 1 (GPIO34) NOT connected");
+
+  int soilRaw2 = analogRead(SOIL_SENSOR_2_PIN);
+  Serial.println(soilRaw2 > 0 && soilRaw2 < 4095
+                     ? "✅ Soil sensor 2 (GPIO35) CONNECTED — Raw: " + String(soilRaw2)
+                     : "❌ Soil sensor 2 (GPIO35) NOT connected");
 
   tempSensor.begin();
   if (tempSensor.getDeviceCount() > 0) {
@@ -492,11 +501,13 @@ void setup() {
     String json = "{";
     json += "\"timestamp\":" + String(s.timestamp) + ",";
     json += "\"raw_adc\":" + String(s.raw_adc) + ",";
+    json += "\"raw_adc_2\":" + String(s.raw_adc_2) + ",";
     json += "\"temp_c\":" + String(s.temp_c, 1) + ",";
     json += "\"soil_temp_c\":" + String(s.temp_c, 1) + ",";
     json += "\"air_temp_c\":" + String(lastAirTemp, 1) + ",";
     json += "\"humidity\":" + String(lastHumidity, 1) + ",";
     json += "\"theta\":" + String(s.theta, 4) + ",";
+    json += "\"theta_2\":" + String(s.theta_2, 4) + ",";
     json += "\"psi_kpa\":" + String(s.psi_kpa, 2) + ",";
     json += "\"aw_mm\":" + String(s.aw_mm, 1) + ",";
     json += "\"Se\":" + String(lastReading.Se, 4) + ",";
@@ -532,7 +543,10 @@ void setup() {
       if (i > 0)
         json += ",";
       json += "{\"timestamp\":" + String(series[i].timestamp) + ",";
-      json += "\"theta\":" + String(series[i].theta, 4) + "}";
+      json += "\"theta\":" + String(series[i].theta, 4) + ",";
+      json += "\"theta_2\":" + String(series[i].theta_2, 4) + ",";
+      json += "\"raw_adc_2\":" + String(series[i].raw_adc_2) + ",";
+      json += "\"humidity\":" + String(series[i].humidity, 1) + "}";
     }
     json += "]";
     req->send(200, "application/json", json);
@@ -701,6 +715,7 @@ void loop() {
     lastSample = millis();
 
     int raw = analogRead(SOIL_PIN);
+    int raw2 = analogRead(SOIL_SENSOR_2_PIN);
     tempSensor.requestTemperatures();
     float temp = tempSensor.getTempCByIndex(0);
     if (temp == DEVICE_DISCONNECTED_C)
@@ -716,6 +731,12 @@ void loop() {
     if (ts < 1000000)
       ts = seqTimestamp++;
 
+    // DHT22 is independent — update cache regardless of soil/temp validation
+    if (humidity >= 0) {
+      lastHumidity = humidity;
+      lastAirTemp = air_temp;
+    }
+
     // Issue 11: validate before processing
     if (!validateSensorReading(raw, temp)) {
       Serial.println("[QC] Reading skipped");
@@ -723,16 +744,19 @@ void loop() {
       // Native C++ physics - no JS, no Duktape
       SensorReading reading = Physics.processSensorReading(raw, temp, ts);
       lastReading = reading;
-      lastAirTemp = air_temp;
-      lastHumidity = humidity;
+
+      // Sensor 2: apply same calibration curve independently
+      float theta2 = sensor2Cal.calibrate(raw2, temp);
 
       SampleData s;
       s.timestamp = reading.timestamp;
       s.raw_adc = reading.raw_adc;
+      s.raw_adc_2 = raw2;
       s.temp_c = reading.temp_c;
       s.humidity = humidity;
       s.air_temp_c = air_temp;
       s.theta = reading.theta;
+      s.theta_2 = theta2;
       s.theta_fc = reading.theta_fc;
       s.theta_refill = reading.theta_refill;
       s.psi_kpa = reading.psi_kPa;
@@ -746,9 +770,10 @@ void loop() {
       s.qc_valid = reading.qc_valid;
       s.seq = (int)(seqTimestamp - 1000000);
 
-      Serial.printf("[SENSOR] theta=%.3f status=%s urgency=%s conf=%.2f\n",
-                    reading.theta, reading.status, reading.urgency,
+      Serial.printf("[SENSOR1] raw=%d theta=%.3f status=%s urgency=%s conf=%.2f\n",
+                    raw, reading.theta, reading.status, reading.urgency,
                     reading.confidence);
+      Serial.printf("[SENSOR2] raw=%d theta=%.3f\n", raw2, theta2);
 
       sampleBuffer.push_back(s);
       if ((int)sampleBuffer.size() >= BATCH_SIZE) {
