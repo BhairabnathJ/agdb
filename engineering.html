@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgriScan — Engineering Telemetry</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      padding: 16px;
+      line-height: 1.5;
+    }
+
+    /* ── Status bar ── */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 4px;
+      padding: 6px 12px;
+      margin-bottom: 16px;
+      font-size: 11px;
+      color: #8b949e;
+    }
+
+    .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #484f58;
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+
+    .dot.green {
+      background: #3fb950;
+    }
+
+    .dot.amber {
+      background: #d29922;
+    }
+
+    .dot.red {
+      background: #f85149;
+    }
+
+    .nav {
+      margin-left: auto;
+    }
+
+    .nav a {
+      color: #58a6ff;
+      text-decoration: none;
+      margin-left: 14px;
+      font-size: 11px;
+    }
+
+    .nav a:hover {
+      text-decoration: underline;
+    }
+
+    /* ── Section / headings ── */
+    .section {
+      margin-bottom: 24px;
+    }
+
+    h2 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #8b949e;
+      margin-bottom: 10px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #21262d;
+    }
+
+    /* ── Cards ── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 10px;
+    }
+
+    .card {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      padding: 12px 10px 10px;
+      transition: background 0.25s;
+    }
+
+    .card-label {
+      font-size: 10px;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+    }
+
+    .card-value {
+      font-family: 'Courier New', monospace;
+      font-size: 22px;
+      font-weight: 600;
+      color: #e6edf3;
+      line-height: 1.2;
+    }
+
+    .card-value.small {
+      font-size: 13px;
+      word-break: break-all;
+    }
+
+    .card-unit {
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      color: #8b949e;
+      margin-top: 3px;
+    }
+
+    /* ── Charts ── */
+    .chart-wrap {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      padding: 12px;
+      max-width: 100%;
+      overflow-x: auto;
+    }
+
+    .chart-wrap canvas {
+      max-height: 240px;
+    }
+
+    /* ── Calibration tracker ── */
+    .cal-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .cal-stat {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      padding: 12px 10px 10px;
+    }
+
+    .cal-stat-label {
+      font-size: 10px;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+    }
+
+    .cal-stat-value {
+      font-family: 'Courier New', monospace;
+      font-size: 26px;
+      font-weight: 700;
+      color: #e6edf3;
+      line-height: 1.1;
+    }
+
+    .cal-stat-value.small {
+      font-size: 14px;
+      word-break: break-all;
+    }
+
+    .cal-stat-unit {
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      color: #8b949e;
+      margin-top: 3px;
+    }
+
+    .cal-log-wrap {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .cal-log-empty {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: #484f58;
+      padding: 12px 10px;
+      text-align: center;
+    }
+
+    /* ── Raw table ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+    }
+
+    thead th {
+      text-align: left;
+      padding: 5px 10px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #8b949e;
+      background: #161b22;
+      border-bottom: 1px solid #21262d;
+    }
+
+    tbody td {
+      padding: 4px 10px;
+      border-bottom: 1px solid #161b22;
+      vertical-align: top;
+    }
+
+    tbody tr:hover td {
+      background: #161b22;
+    }
+
+    tbody td:first-child {
+      color: #79c0ff;
+      width: 42%;
+    }
+
+    tbody td:last-child {
+      color: #e6edf3;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="status-bar">
+    <span>
+      <span class="dot" id="connDot"></span>
+      <span id="connStatus">CONNECTING</span>
+    </span>
+    <span>Last updated: <span id="lastUpdated" style="color:#e6edf3;">--:--:--</span></span>
+    <span style="color:#58a6ff;font-weight:600;letter-spacing:0.04em;">Engineering Telemetry</span>
+    <div class="nav">
+      <a href="/">Dashboard</a>
+      <a href="/diagnostics.html">Diagnostics</a>
+      <a href="/dev_dashboard.html">Dev</a>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>System Health</h2>
+    <div class="cards" id="cards"></div>
+  </div>
+
+  <div class="section">
+    <h2>Soil Moisture History (VWC θ)</h2>
+    <div class="chart-wrap">
+      <canvas id="chartTheta"></canvas>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Temperature &amp; Humidity History</h2>
+    <div class="chart-wrap">
+      <canvas id="chartEnv"></canvas>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Calibration Tracker</h2>
+    <div class="cal-summary">
+      <div class="cal-stat">
+        <div class="cal-stat-label">θ_fc (Field Capacity)</div>
+        <div class="cal-stat-value" id="cal_fc">--</div>
+        <div class="cal-stat-unit">m³/m³</div>
+      </div>
+      <div class="cal-stat">
+        <div class="cal-stat-label">θ_refill (Threshold)</div>
+        <div class="cal-stat-value" id="cal_refill">--</div>
+        <div class="cal-stat-unit">m³/m³</div>
+      </div>
+      <div class="cal-stat">
+        <div class="cal-stat-label">Cal State</div>
+        <div class="cal-stat-value small" id="cal_state">--</div>
+        <div class="cal-stat-unit">&nbsp;</div>
+      </div>
+      <div class="cal-stat">
+        <div class="cal-stat-label">Confidence</div>
+        <div class="cal-stat-value" id="cal_conf">--</div>
+        <div class="cal-stat-unit">%</div>
+      </div>
+    </div>
+    <div class="cal-log-wrap">
+      <table id="calLogTable" style="display:none">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Field</th>
+            <th>Old</th>
+            <th>New</th>
+          </tr>
+        </thead>
+        <tbody id="calLogBody"></tbody>
+      </table>
+      <div class="cal-log-empty" id="calLogEmpty">No threshold changes observed yet</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Raw Data Dump — /api/current</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Field</th>
+          <th>Value</th>
+        </tr>
+      </thead>
+      <tbody id="rawBody"></tbody>
+    </table>
+  </div>
+
+  <script src="/js/chart.min.js"></script>
+  <script>
+    const MAX_PTS = 200;
+
+    // ── History buffers (shared x-axis labels) ──────────────────────────────
+    const labels = [];
+    const thetaData = [];
+    const thetaFcData  = [];
+    const thetaRefill  = [];
+    const thetaSatData = [];
+    const soilTempData = [];
+    const airTempData = [];
+    const humData = [];
+
+    // ── Card definitions ─────────────────────────────────────────────────────
+    const CARD_DEFS = [
+      {
+        key: 'theta',
+        label: 'VWC θ',
+        fmt: v => (v * 100).toFixed(1),
+        unit: '%vol'
+      },
+      {
+        key: 'soil_temp_c',
+        label: 'Soil Temp (DS18B20)',
+        fmt: v => v <= -0.5 ? '--' : v.toFixed(1),
+        unit: '°C'
+      },
+      {
+        key: 'air_temp_c',
+        label: 'Air Temp (DHT22)',
+        fmt: v => v <= -0.5 ? '--' : v.toFixed(1),
+        unit: '°C'
+      },
+      {
+        key: 'humidity',
+        label: 'Humidity (DHT22)',
+        fmt: v => v <= -0.5 ? '--' : v.toFixed(1),
+        unit: '%'
+      },
+      {
+        key: 'urgency',
+        label: 'Urgency ★',
+        fmt: v => v || '--',
+        unit: '',
+        bg: v => ({ low: '#1a3a1a', medium: '#3a2e00', high: '#3a0000' }[v] || '#161b22')
+      },
+      {
+        key: 'calibration_state',
+        label: 'Cal State',
+        fmt: v => v || '--',
+        unit: '',
+        small: true
+      },
+      {
+        key: 'confidence',
+        label: 'Confidence',
+        fmt: v => (v * 100).toFixed(0),
+        unit: '%'
+      }
+    ];
+
+    // Build card DOM once on load
+    function buildCards() {
+      const container = document.getElementById('cards');
+      CARD_DEFS.forEach(def => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.id = 'card_' + def.key;
+        card.innerHTML =
+          `<div class="card-label">${def.label}</div>` +
+          `<div class="card-value${def.small ? ' small' : ''}">--</div>` +
+          `<div class="card-unit">${def.unit}</div>`;
+        container.appendChild(card);
+      });
+    }
+
+    function updateCards(data) {
+      CARD_DEFS.forEach(def => {
+        const card = document.getElementById('card_' + def.key);
+        if (!card) return;
+        const val = data[def.key];
+        card.querySelector('.card-value').textContent =
+          val !== undefined ? def.fmt(val) : '--';
+        if (def.bg) card.style.background = def.bg(val);
+      });
+    }
+
+    // ── Chart setup ──────────────────────────────────────────────────────────
+    let chartTheta, chartEnv;
+
+    const xScale = {
+      ticks: {
+        color: '#8b949e',
+        font: { family: 'Courier New', size: 10 },
+        maxTicksLimit: 10,
+        maxRotation: 0
+      },
+      grid: { color: '#21262d' }
+    };
+
+    const yTicks = { color: '#8b949e', font: { family: 'Courier New', size: 10 } };
+
+    function initCharts() {
+      // Chart A: VWC theta + threshold lines
+      chartTheta = new Chart(document.getElementById('chartTheta'), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'θ (VWC)',
+              data: thetaData,
+              borderColor: '#58a6ff',
+              backgroundColor: 'rgba(88,166,255,0.07)',
+              borderWidth: 2,
+              pointRadius: 2,
+              tension: 0.3,
+              fill: true,
+              yAxisID: 'y'
+            },
+            {
+              label: 'θ_fc  (field cap.)',
+              data: thetaFcData,
+              borderColor: '#3fb950',
+              borderDash: [6, 3],
+              borderWidth: 1.5,
+              pointRadius: 0,
+              fill: false,
+              yAxisID: 'y'
+            },
+            {
+              label: 'θ_refill (threshold)',
+              data: thetaRefill,
+              borderColor: '#d29922',
+              borderDash: [6, 3],
+              borderWidth: 1.5,
+              pointRadius: 0,
+              fill: false,
+              yAxisID: 'y'
+            },
+            {
+              label: 'θ_sat (saturation)',
+              data: thetaSatData,
+              borderColor: '#f85149',
+              borderDash: [6, 3],
+              borderWidth: 1.5,
+              pointRadius: 0,
+              fill: false,
+              yAxisID: 'y'
+            }
+          ]
+        },
+        options: {
+          animation: false,
+          responsive: true,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { labels: { color: '#8b949e', font: { size: 11 } } }
+          },
+          scales: {
+            x: xScale,
+            y: {
+              position: 'left',
+              ticks: yTicks,
+              grid: { color: '#21262d' },
+              title: { display: true, text: 'θ (m³/m³)', color: '#8b949e', font: { size: 10 } }
+            }
+          }
+        }
+      });
+
+      // Chart B: soil temp + air temp (left) + humidity (right)
+      chartEnv = new Chart(document.getElementById('chartEnv'), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Soil Temp (DS18B20)',
+              data: soilTempData,
+              borderColor: '#ff7b72',
+              borderWidth: 2,
+              pointRadius: 2,
+              tension: 0.3,
+              fill: false,
+              yAxisID: 'yTemp'
+            },
+            {
+              label: 'Air Temp (DHT22)',
+              data: airTempData,
+              borderColor: '#ffa657',
+              borderWidth: 2,
+              pointRadius: 2,
+              tension: 0.3,
+              fill: false,
+              yAxisID: 'yTemp'
+            },
+            {
+              label: 'Humidity (DHT22)',
+              data: humData,
+              borderColor: '#a5f3fc',
+              borderWidth: 2,
+              pointRadius: 2,
+              tension: 0.3,
+              fill: false,
+              yAxisID: 'yHumidity'
+            }
+          ]
+        },
+        options: {
+          animation: false,
+          responsive: true,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { labels: { color: '#8b949e', font: { size: 11 } } }
+          },
+          scales: {
+            x: xScale,
+            yTemp: {
+              position: 'left',
+              min: 0,
+              max: 50,
+              ticks: yTicks,
+              grid: { color: '#21262d' },
+              title: { display: true, text: '°C', color: '#8b949e', font: { size: 10 } }
+            },
+            yHumidity: {
+              position: 'right',
+              min: 0,
+              max: 100,
+              ticks: yTicks,
+              grid: { drawOnChartArea: false },
+              title: { display: true, text: '%', color: '#8b949e', font: { size: 10 } }
+            }
+          }
+        }
+      });
+    }
+
+    // ── Data push ─────────────────────────────────────────────────────────────
+    function pushPoint(data) {
+      const ts = data.timestamp;
+      const label = ts ? new Date(ts * 1000).toLocaleTimeString() : '--';
+
+      labels.push(label);
+      thetaData.push(data.theta ?? null);
+      thetaFcData.push(data.theta_fc ?? null);
+      thetaRefill.push(data.theta_refill ?? null);
+      thetaSatData.push(data.theta_sat ?? 0.45);
+      soilTempData.push(data.soil_temp_c ?? null);
+      airTempData.push((data.air_temp_c ?? -1) <= -0.5 ? null : data.air_temp_c);
+      humData.push((data.humidity ?? -1) <= -0.5 ? null : data.humidity);
+
+      // Trim oldest
+      if (labels.length > MAX_PTS) {
+        labels.shift();
+        thetaData.shift();
+        thetaFcData.shift();
+        thetaRefill.shift();
+        thetaSatData.shift();
+        soilTempData.shift();
+        airTempData.shift();
+        humData.shift();
+      }
+
+      chartTheta.update();
+      chartEnv.update();
+    }
+
+    // ── Calibration tracker ───────────────────────────────────────────────────
+    const MAX_CAL_LOG = 50;
+    const calLog = [];
+    let prevThetaFc     = null;
+    let prevThetaRefill = null;
+
+    function updateCalTracker(data) {
+      const fc     = data.theta_fc;
+      const refill = data.theta_refill;
+      const state  = data.calibration_state;
+      const conf   = data.confidence;
+
+      document.getElementById('cal_fc').textContent    = fc     !== undefined ? fc.toFixed(3)              : '--';
+      document.getElementById('cal_refill').textContent= refill !== undefined ? refill.toFixed(3)          : '--';
+      document.getElementById('cal_state').textContent = state  !== undefined ? (state || 'INIT')          : '--';
+      document.getElementById('cal_conf').textContent  = conf   !== undefined ? (conf * 100).toFixed(0)    : '--';
+
+      const ts = new Date().toLocaleTimeString();
+      const EPS = 0.0005; // ignore sub-0.001 float noise
+
+      if (prevThetaFc !== null && Math.abs(fc - prevThetaFc) > EPS) {
+        calLog.unshift({ ts, field: 'theta_fc', oldVal: prevThetaFc, newVal: fc });
+      }
+      if (prevThetaRefill !== null && Math.abs(refill - prevThetaRefill) > EPS) {
+        calLog.unshift({ ts, field: 'theta_refill', oldVal: prevThetaRefill, newVal: refill });
+      }
+
+      if (calLog.length > MAX_CAL_LOG) calLog.length = MAX_CAL_LOG;
+
+      prevThetaFc     = fc;
+      prevThetaRefill = refill;
+
+      const tbody = document.getElementById('calLogBody');
+      if (calLog.length === 0) return;
+
+      document.getElementById('calLogEmpty').style.display = 'none';
+      document.getElementById('calLogTable').style.display  = '';
+
+      tbody.innerHTML = calLog.map(e =>
+        `<tr>` +
+        `<td>${e.ts}</td>` +
+        `<td style="color:#79c0ff">${e.field}</td>` +
+        `<td style="color:#8b949e">${e.oldVal.toFixed(4)}</td>` +
+        `<td style="color:#3fb950">${e.newVal.toFixed(4)}</td>` +
+        `</tr>`
+      ).join('');
+    }
+
+    // ── Raw table ─────────────────────────────────────────────────────────────
+    function formatVal(v) {
+      if (typeof v === 'boolean') return String(v);
+      if (typeof v === 'number') return Number.isInteger(v) ? v : v.toFixed(4);
+      return String(v);
+    }
+
+    function updateTable(data) {
+      document.getElementById('rawBody').innerHTML =
+        Object.entries(data)
+          .map(([k, v]) => `<tr><td>${k}</td><td>${formatVal(v)}</td></tr>`)
+          .join('');
+    }
+
+    // ── Connection indicator ──────────────────────────────────────────────────
+    function setConnected(ok) {
+      document.getElementById('connDot').className = 'dot ' + (ok ? 'green' : 'red');
+      document.getElementById('connStatus').textContent = ok ? 'CONNECTED' : 'DISCONNECTED';
+    }
+
+    // ── Main fetch loop ───────────────────────────────────────────────────────
+    async function fetchData() {
+      try {
+        const res = await fetch('/api/current');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        setConnected(true);
+        document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
+        updateCards(data);
+        pushPoint(data);
+        updateCalTracker(data);
+        updateTable(data);
+      } catch (e) {
+        setConnected(false);
+      }
+    }
+
+    // ── Boot ──────────────────────────────────────────────────────────────────
+    buildCards();
+    initCharts();
+    fetchData();
+    setInterval(fetchData, 2000);
+  </script>
+</body>
+
+</html>

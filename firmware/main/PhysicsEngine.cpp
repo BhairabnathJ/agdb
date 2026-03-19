@@ -69,12 +69,14 @@ float physics_ewma(float current, float newValue, float lambda) {
 // =============================================================================
 
 SensorCalibration::SensorCalibration() {
-    // Default factory calibration curve (capacitive sensor v1.2)
-    curve[0] = {250,  0.00f};
-    curve[1] = {450,  0.10f};
-    curve[2] = {650,  0.25f};
-    curve[3] = {850,  0.40f};
-    curve[4] = {1000, 0.50f};
+    // Factory calibration curve — capacitive sensor v1.2
+    // Inverse relationship: higher ADC = drier soil
+    // Dry air ~2550–2600 ADC → 0.00; submerged ~1100–1130 ADC → 0.50
+    curve[0] = {1100, 0.50f};   // saturated
+    curve[1] = {1400, 0.35f};
+    curve[2] = {1800, 0.25f};
+    curve[3] = {2200, 0.10f};
+    curve[4] = {2600, 0.00f};   // dry air
 }
 
 float SensorCalibration::rawToVWC(int raw) {

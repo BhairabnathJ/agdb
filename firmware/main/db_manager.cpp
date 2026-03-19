@@ -12,6 +12,53 @@ DBManager::~DBManager() {
     sqlite3_close(db);
 }
 
+// =============================================================================
+// SCHEMA MIGRATION
+// =============================================================================
+
+struct ColDef {
+  const char *name;
+  const char *definition; // type + DEFAULT clause, e.g. "REAL DEFAULT -1"
+};
+
+// Single-pass migration: reads PRAGMA table_info once, then ALTER TABLEs any
+// column from `cols` that is absent.  Safe to re-run on every boot.
+static void migrateTable(sqlite3 *db, const char *table,
+                         const ColDef *cols, int nCols) {
+  bool found[24] = {};
+  int  check = nCols < 24 ? nCols : 24;
+
+  char pragma[64];
+  snprintf(pragma, sizeof(pragma), "PRAGMA table_info(%s)", table);
+
+  sqlite3_stmt *stmt;
+  if (sqlite3_prepare_v2(db, pragma, -1, &stmt, nullptr) == SQLITE_OK) {
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+      const char *cn = (const char *)sqlite3_column_text(stmt, 1);
+      if (!cn) continue;
+      for (int i = 0; i < check; i++) {
+        if (strcmp(cn, cols[i].name) == 0) { found[i] = true; break; }
+      }
+    }
+    sqlite3_finalize(stmt);
+  }
+
+  for (int i = 0; i < check; i++) {
+    if (found[i]) continue;
+    char sql[128];
+    snprintf(sql, sizeof(sql), "ALTER TABLE %s ADD COLUMN %s %s",
+             table, cols[i].name, cols[i].definition);
+    char *err = nullptr;
+    if (sqlite3_exec(db, sql, nullptr, nullptr, &err) == SQLITE_OK) {
+      Serial.printf("[DB] %s: added column %s\n", table, cols[i].name);
+    } else {
+      Serial.printf("[DB] %s + %s failed: %s\n", table, cols[i].name,
+                    err ? err : "?");
+      sqlite3_free(err);
+    }
+  }
+}
+
 bool DBManager::init() {
   // 1. Open Database
   int rc = sqlite3_open(dbPath, &db);
@@ -34,7 +81,8 @@ bool DBManager::init() {
       "raw_adc INTEGER, temp_c REAL, theta REAL, "
       "theta_fc REAL, theta_refill REAL, psi_kpa REAL, aw_mm REAL, "
       "fraction_depleted REAL, drying_rate REAL, regime TEXT, status TEXT, "
-      "urgency TEXT, confidence REAL, qc_valid INTEGER, seq INTEGER);"
+      "urgency TEXT, confidence REAL, qc_valid INTEGER, seq INTEGER, "
+      "air_temp_c REAL DEFAULT -1);"
       "CREATE INDEX IF NOT EXISTS idx_timestamp ON samples(timestamp);"
       "CREATE TABLE IF NOT EXISTS calibration ("
       "version INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER, state "
@@ -44,6 +92,42 @@ bool DBManager::init() {
 
   if (!executeSQL(tableSQL))
     return false;
+
+  // 3b. Schema migration — adds columns missing from databases created before
+  //     a schema change.  New columns are appended; no data is lost.
+  static const ColDef samplesCols[] = {
+    {"timestamp",         "INTEGER NOT NULL DEFAULT 0"},
+    {"raw_adc",           "INTEGER DEFAULT 0"},
+    {"temp_c",            "REAL DEFAULT 0"},
+    {"theta",             "REAL DEFAULT 0"},
+    {"theta_fc",          "REAL DEFAULT 0"},
+    {"theta_refill",      "REAL DEFAULT 0"},
+    {"psi_kpa",           "REAL DEFAULT 0"},
+    {"aw_mm",             "REAL DEFAULT 0"},
+    {"fraction_depleted", "REAL DEFAULT 0"},
+    {"drying_rate",       "REAL DEFAULT 0"},
+    {"regime",            "TEXT DEFAULT ''"},
+    {"status",            "TEXT DEFAULT ''"},
+    {"urgency",           "TEXT DEFAULT ''"},
+    {"confidence",        "REAL DEFAULT 0"},
+    {"qc_valid",          "INTEGER DEFAULT 0"},
+    {"seq",               "INTEGER DEFAULT 0"},
+    {"air_temp_c",        "REAL DEFAULT -1"},
+  };
+  migrateTable(db, "samples", samplesCols,
+               sizeof(samplesCols) / sizeof(samplesCols[0]));
+
+  static const ColDef calibCols[] = {
+    {"timestamp",    "INTEGER DEFAULT 0"},
+    {"state",        "TEXT DEFAULT ''"},
+    {"theta_fc",     "REAL DEFAULT 0"},
+    {"theta_refill", "REAL DEFAULT 0"},
+    {"n_events",     "INTEGER DEFAULT 0"},
+    {"confidence",   "REAL DEFAULT 0"},
+    {"params_json",  "TEXT DEFAULT ''"},
+  };
+  migrateTable(db, "calibration", calibCols,
+               sizeof(calibCols) / sizeof(calibCols[0]));
 
   // 4. Prepare Statements
   return prepareStatements();
@@ -55,8 +139,8 @@ bool DBManager::prepareStatements() {
       "INSERT INTO samples "
       "(timestamp, raw_adc, temp_c, theta, theta_fc, theta_refill, "
       "psi_kpa, aw_mm, fraction_depleted, drying_rate, regime, "
-      "status, urgency, confidence, qc_valid, seq) "
-      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+      "status, urgency, confidence, qc_valid, seq, air_temp_c) "
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
   int rc = sqlite3_prepare_v2(db, sql, -1, &insertStmt, nullptr);
   if (rc != SQLITE_OK) {
@@ -77,7 +161,8 @@ bool DBManager::writeSampleBatch(std::vector<SampleData> &samples) {
 
     // Binds map to: timestamp=1, raw_adc=2, temp_c=3, theta=4, theta_fc=5,
     // theta_refill=6, psi_kpa=7, aw_mm=8, fraction_depleted=9, drying_rate=10,
-    // regime=11, status=12, urgency=13, confidence=14, qc_valid=15, seq=16
+    // regime=11, status=12, urgency=13, confidence=14, qc_valid=15, seq=16,
+    // air_temp_c=17
     sqlite3_bind_int64(insertStmt, 1, s.timestamp);
     sqlite3_bind_int(insertStmt, 2, s.raw_adc);
     sqlite3_bind_double(insertStmt, 3, s.temp_c);
@@ -94,6 +179,7 @@ bool DBManager::writeSampleBatch(std::vector<SampleData> &samples) {
     sqlite3_bind_double(insertStmt, 14, s.confidence);
     sqlite3_bind_int(insertStmt, 15, s.qc_valid ? 1 : 0);
     sqlite3_bind_int(insertStmt, 16, s.seq);
+    sqlite3_bind_double(insertStmt, 17, s.air_temp_c);
 
     if (sqlite3_step(insertStmt) != SQLITE_DONE) {
       Serial.printf("Insert Step Error: %s\n", sqlite3_errmsg(db));
@@ -116,7 +202,7 @@ SampleData DBManager::getLatestSample() {
       // col 4: theta, col 5: theta_fc, col 6: theta_refill, col 7: psi_kpa,
       // col 8: aw_mm, col 9: fraction_depleted, col 10: drying_rate,
       // col 11: regime, col 12: status, col 13: urgency, col 14: confidence,
-      // col 15: qc_valid, col 16: seq
+      // col 15: qc_valid, col 16: seq, col 17: air_temp_c
       s.id = sqlite3_column_int(stmt, 0);
       s.timestamp = sqlite3_column_int64(stmt, 1);
       s.raw_adc = sqlite3_column_int(stmt, 2);
@@ -134,6 +220,7 @@ SampleData DBManager::getLatestSample() {
       s.confidence = sqlite3_column_double(stmt, 14);
       s.qc_valid = sqlite3_column_int(stmt, 15) != 0;
       s.seq = sqlite3_column_int(stmt, 16);
+      s.air_temp_c = sqlite3_column_double(stmt, 17);
     }
   }
   sqlite3_finalize(stmt);
@@ -146,7 +233,7 @@ std::vector<SampleData> DBManager::getRecentSamples(int n) {
   const char *sql =
       "SELECT id, timestamp, raw_adc, temp_c, theta, theta_fc, theta_refill, "
       "psi_kpa, aw_mm, fraction_depleted, drying_rate, regime, status, "
-      "urgency, confidence, qc_valid, seq "
+      "urgency, confidence, qc_valid, seq, air_temp_c "
       "FROM samples ORDER BY timestamp DESC LIMIT ?";
 
   if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
@@ -170,6 +257,7 @@ std::vector<SampleData> DBManager::getRecentSamples(int n) {
       s.confidence         = sqlite3_column_double(stmt, 14);
       s.qc_valid           = sqlite3_column_int(stmt, 15) != 0;
       s.seq                = sqlite3_column_int(stmt, 16);
+      s.air_temp_c         = sqlite3_column_double(stmt, 17);
       res.push_back(s);
     }
   }

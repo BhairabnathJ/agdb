@@ -9,7 +9,7 @@
 
 #include "db_manager.h"
 #include "physics_engine.h"
-#include <Adafruit_AHTX0.h>
+#include <DHT.h>
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <DallasTemperature.h>
@@ -17,7 +17,6 @@
 #include <OneWire.h>
 #include <SD.h>
 #include <WiFi.h>
-#include <Wire.h>
 #include <esp_now.h> // Issue 7: ESP-NOW for CropBand pairing
 #include <map>       // Issue 7: per-device physics instances
 
@@ -27,9 +26,8 @@
 
 #define SOIL_PIN 34
 #define TEMP_PIN 4
-// AHT30 humidity sensor — I2C: SDA→D21, SCL→D22, VCC→3.3V, GND→GND
-#define AHT30_SDA 21
-#define AHT30_SCL 22
+// DHT22 humidity sensor — Data→GPIO16, 10kΩ pullup to 3.3V
+#define DHT_PIN 16
 #define SD_CS 5 // Change if your CS pin is different
 
 // =============================================================================
@@ -41,12 +39,17 @@ DBManager dbManager("/sd/agriscan.db");
 
 OneWire oneWire(TEMP_PIN);
 DallasTemperature tempSensor(&oneWire);
-Adafruit_AHTX0 aht;
+DHT dht(DHT_PIN, DHT22);
 
 std::vector<SampleData> sampleBuffer;
 const int BATCH_SIZE = 6;
 
 static uint32_t seqTimestamp = 1000000;
+
+// Cache of latest physics output — read by /api/current without DB round-trip
+static SensorReading lastReading = {};
+static float lastAirTemp = -1.0f;
+static float lastHumidity = -1.0f;
 
 // Issue 7: ESP-NOW CropBand packet format
 typedef struct {
@@ -426,16 +429,13 @@ void setup() {
     Serial.println("❌ DS18B20 NOT found — check wiring + 4.7kΩ pullup");
   }
 
-  Wire.begin(AHT30_SDA, AHT30_SCL);
-  delay(100); // let AHT30 power up
-  if (aht.begin()) {
-    sensors_event_t hEvent, tEvent;
-    aht.getEvent(&hEvent, &tEvent);
-    Serial.println("✅ AHT30 CONNECTED — Humidity: " +
-                   String(hEvent.relative_humidity, 1) + "%");
-  } else {
-    Serial.println("❌ AHT30 NOT found — check SDA→D21, SCL→D22, VCC→3.3V");
-  }
+  dht.begin();
+  delay(2000); // DHT22 needs ~2 s after power-up before first read
+  float dhtH = dht.readHumidity();
+  float dhtT = dht.readTemperature();
+  Serial.println(!isnan(dhtH)
+                     ? "✅ DHT22 CONNECTED — Humidity: " + String(dhtH, 1) + "% Temp: " + String(dhtT, 1) + "°C"
+                     : "❌ DHT22 NOT found — check GPIO16, 10kΩ pullup to 3.3V");
 
   // SD card
   if (!SD.begin(SD_CS)) {
@@ -493,12 +493,23 @@ void setup() {
     json += "\"timestamp\":" + String(s.timestamp) + ",";
     json += "\"raw_adc\":" + String(s.raw_adc) + ",";
     json += "\"temp_c\":" + String(s.temp_c, 1) + ",";
-    json += "\"humidity\":" + String(s.humidity, 1) + ",";
+    json += "\"soil_temp_c\":" + String(s.temp_c, 1) + ",";
+    json += "\"air_temp_c\":" + String(lastAirTemp, 1) + ",";
+    json += "\"humidity\":" + String(lastHumidity, 1) + ",";
     json += "\"theta\":" + String(s.theta, 4) + ",";
     json += "\"psi_kpa\":" + String(s.psi_kpa, 2) + ",";
     json += "\"aw_mm\":" + String(s.aw_mm, 1) + ",";
+    json += "\"Se\":" + String(lastReading.Se, 4) + ",";
+    json += "\"TAW_mm\":" + String(lastReading.TAW_mm, 1) + ",";
+    json += "\"Dr_mm\":" + String(lastReading.Dr_mm, 1) + ",";
+    json += "\"fractionDepleted\":" + String(lastReading.fractionDepleted, 3) + ",";
+    json += "\"dryingRate_per_hr\":" + String(lastReading.dryingRate_per_hr, 4) + ",";
+    json += "\"regime\":\"" + String(lastReading.regime) + "\",";
     json += "\"status\":\"" + s.status + "\",";
     json += "\"urgency\":\"" + s.urgency + "\",";
+    json += "\"recommendation\":\"" + String(lastReading.recommendation) + "\",";
+    json += "\"calibration_state\":\"" + String(lastReading.calibration_state) + "\",";
+    json += "\"qc_valid\":" + String(lastReading.qc_valid ? "true" : "false") + ",";
     json += "\"confidence\":" + String(s.confidence, 2) + ",";
     json += "\"theta_fc\":" + String(activeCrop.theta_fc, 3) + ",";
     json += "\"theta_refill\":" + String(activeCrop.theta_refill, 3) + ",";
@@ -686,7 +697,7 @@ void setup() {
 void loop() {
   static unsigned long lastSample = 0;
 
-  if (millis() - lastSample > 10000) {
+  if (millis() - lastSample > 2000) {
     lastSample = millis();
 
     int raw = analogRead(SOIL_PIN);
@@ -694,12 +705,12 @@ void loop() {
     float temp = tempSensor.getTempCByIndex(0);
     if (temp == DEVICE_DISCONNECTED_C)
       temp = 25.0f;
-    sensors_event_t hEvent, tEvent;
-    aht.getEvent(&hEvent, &tEvent);
-    float humidity =
-        (hEvent.relative_humidity >= 0.0f && hEvent.relative_humidity <= 100.0f)
-            ? hEvent.relative_humidity
-            : -1.0f;
+    float humidity = dht.readHumidity();
+    if (isnan(humidity))
+      humidity = -1.0f;
+    float air_temp = dht.readTemperature();
+    if (isnan(air_temp))
+      air_temp = -1.0f;
 
     time_t ts = time(nullptr);
     if (ts < 1000000)
@@ -711,12 +722,16 @@ void loop() {
     } else {
       // Native C++ physics - no JS, no Duktape
       SensorReading reading = Physics.processSensorReading(raw, temp, ts);
+      lastReading = reading;
+      lastAirTemp = air_temp;
+      lastHumidity = humidity;
 
       SampleData s;
       s.timestamp = reading.timestamp;
       s.raw_adc = reading.raw_adc;
       s.temp_c = reading.temp_c;
       s.humidity = humidity;
+      s.air_temp_c = air_temp;
       s.theta = reading.theta;
       s.theta_fc = reading.theta_fc;
       s.theta_refill = reading.theta_refill;

@@ -11,6 +11,7 @@ struct SampleData {
   int raw_adc;
   float temp_c;
   float humidity = -1.0f;
+  float air_temp_c = -1.0f;
   float theta;
   float theta_fc;
   float theta_refill;
