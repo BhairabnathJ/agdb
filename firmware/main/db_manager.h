@@ -27,6 +27,8 @@ struct SampleData {
   float confidence;
   bool qc_valid;
   int seq;
+  String device_id = "HUB_ONBOARD";
+  int battery_pct = -1;
 };
 
 class DBManager {
@@ -42,6 +44,9 @@ public:
   SampleData getLatestSample();
   std::vector<SampleData> getRecentSamples(int n);
   std::vector<SampleData> getSamplesInRange(time_t start, time_t end);
+  SampleData getLatestSampleForDevice(const String &deviceId);
+  std::vector<SampleData> getRecentSamples(int n, const String &deviceId);
+  time_t getDeviceLastSeen(const String &deviceId);
 
   // Calibration
   bool writeCalibration(String state, float fc, float refill, int n_events,

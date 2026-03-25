@@ -104,7 +104,8 @@ bool DBManager::init() {
       "fraction_depleted REAL, drying_rate REAL, regime TEXT, status TEXT, "
       "urgency TEXT, confidence REAL, qc_valid INTEGER, seq INTEGER, "
       "air_temp_c REAL DEFAULT -1, humidity REAL DEFAULT -1, "
-      "raw_adc_2 INTEGER DEFAULT -1, theta_2 REAL DEFAULT -1);"
+      "raw_adc_2 INTEGER DEFAULT -1, theta_2 REAL DEFAULT -1, "
+      "device_id TEXT DEFAULT 'HUB_ONBOARD', battery_pct INTEGER DEFAULT -1);"
       "CREATE INDEX IF NOT EXISTS idx_timestamp ON samples(timestamp);"
       "CREATE TABLE IF NOT EXISTS calibration ("
       "version INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER, state "
@@ -141,6 +142,8 @@ bool DBManager::init() {
     {"humidity",          "REAL DEFAULT -1"},
     {"raw_adc_2",         "INTEGER DEFAULT -1"},
     {"theta_2",           "REAL DEFAULT -1"},
+    {"device_id",         "TEXT DEFAULT 'HUB_ONBOARD'"},
+    {"battery_pct",       "INTEGER DEFAULT -1"},
   };
   migrateTable(db, "samples", samplesCols,
                sizeof(samplesCols) / sizeof(samplesCols[0]));
@@ -168,8 +171,8 @@ bool DBManager::prepareStatements() {
       "(timestamp, raw_adc, temp_c, theta, theta_fc, theta_refill, "
       "psi_kpa, aw_mm, fraction_depleted, drying_rate, regime, "
       "status, urgency, confidence, qc_valid, seq, air_temp_c, humidity, "
-      "raw_adc_2, theta_2) "
-      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+      "raw_adc_2, theta_2, device_id, battery_pct) "
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
   int rc = sqlite3_prepare_v2(db, sql, -1, &insertStmt, nullptr);
   if (rc != SQLITE_OK) {
@@ -212,6 +215,8 @@ bool DBManager::writeSampleBatch(std::vector<SampleData> &samples) {
     sqlite3_bind_double(insertStmt, 18, s.humidity);
     sqlite3_bind_int(insertStmt, 19, s.raw_adc_2);
     sqlite3_bind_double(insertStmt, 20, s.theta_2);
+    sqlite3_bind_text(insertStmt, 21, s.device_id.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(insertStmt, 22, s.battery_pct);
 
     if (sqlite3_step(insertStmt) != SQLITE_DONE) {
       Serial.printf("Insert Step Error: %s\n", sqlite3_errmsg(db));
@@ -266,7 +271,7 @@ std::vector<SampleData> DBManager::getRecentSamples(int n) {
       "SELECT id, timestamp, raw_adc, temp_c, theta, theta_fc, theta_refill, "
       "psi_kpa, aw_mm, fraction_depleted, drying_rate, regime, status, "
       "urgency, confidence, qc_valid, seq, air_temp_c, humidity, "
-      "raw_adc_2, theta_2 "
+      "raw_adc_2, theta_2, device_id, battery_pct "
       "FROM samples ORDER BY timestamp DESC LIMIT ?";
 
   if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
@@ -294,6 +299,8 @@ std::vector<SampleData> DBManager::getRecentSamples(int n) {
       s.humidity           = sqlite3_column_double(stmt, 18);
       s.raw_adc_2          = sqlite3_column_int(stmt, 19);
       s.theta_2            = sqlite3_column_double(stmt, 20);
+      s.device_id          = String((const char *)sqlite3_column_text(stmt, 21));
+      s.battery_pct        = sqlite3_column_int(stmt, 22);
       res.push_back(s);
     }
   }
@@ -321,6 +328,106 @@ std::vector<SampleData> DBManager::getSamplesInRange(time_t start, time_t end) {
   }
   sqlite3_finalize(stmt);
   return res;
+}
+
+SampleData DBManager::getLatestSampleForDevice(const String &deviceId) {
+  SampleData s = {};
+  sqlite3_stmt *stmt;
+  const char *sql =
+      "SELECT id, timestamp, raw_adc, temp_c, theta, theta_fc, theta_refill, "
+      "psi_kpa, aw_mm, fraction_depleted, drying_rate, regime, status, "
+      "urgency, confidence, qc_valid, seq, air_temp_c, humidity, "
+      "raw_adc_2, theta_2, device_id, battery_pct "
+      "FROM samples WHERE device_id = ? ORDER BY timestamp DESC LIMIT 1";
+
+  if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+    sqlite3_bind_text(stmt, 1, deviceId.c_str(), -1, SQLITE_TRANSIENT);
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+      s.id                = sqlite3_column_int(stmt, 0);
+      s.timestamp         = sqlite3_column_int64(stmt, 1);
+      s.raw_adc           = sqlite3_column_int(stmt, 2);
+      s.temp_c            = sqlite3_column_double(stmt, 3);
+      s.theta             = sqlite3_column_double(stmt, 4);
+      s.theta_fc          = sqlite3_column_double(stmt, 5);
+      s.theta_refill      = sqlite3_column_double(stmt, 6);
+      s.psi_kpa           = sqlite3_column_double(stmt, 7);
+      s.aw_mm             = sqlite3_column_double(stmt, 8);
+      s.fraction_depleted = sqlite3_column_double(stmt, 9);
+      s.drying_rate       = sqlite3_column_double(stmt, 10);
+      s.regime    = String((const char *)sqlite3_column_text(stmt, 11));
+      s.status    = String((const char *)sqlite3_column_text(stmt, 12));
+      s.urgency   = String((const char *)sqlite3_column_text(stmt, 13));
+      s.confidence        = sqlite3_column_double(stmt, 14);
+      s.qc_valid          = sqlite3_column_int(stmt, 15) != 0;
+      s.seq               = sqlite3_column_int(stmt, 16);
+      s.air_temp_c        = sqlite3_column_double(stmt, 17);
+      s.humidity          = sqlite3_column_double(stmt, 18);
+      s.raw_adc_2         = sqlite3_column_int(stmt, 19);
+      s.theta_2           = sqlite3_column_double(stmt, 20);
+      s.device_id         = String((const char *)sqlite3_column_text(stmt, 21));
+      s.battery_pct       = sqlite3_column_int(stmt, 22);
+    }
+  }
+  sqlite3_finalize(stmt);
+  return s;
+}
+
+std::vector<SampleData> DBManager::getRecentSamples(int n, const String &deviceId) {
+  std::vector<SampleData> res;
+  sqlite3_stmt *stmt;
+  const char *sql =
+      "SELECT id, timestamp, raw_adc, temp_c, theta, theta_fc, theta_refill, "
+      "psi_kpa, aw_mm, fraction_depleted, drying_rate, regime, status, "
+      "urgency, confidence, qc_valid, seq, air_temp_c, humidity, "
+      "raw_adc_2, theta_2, device_id, battery_pct "
+      "FROM samples WHERE device_id = ? ORDER BY timestamp DESC LIMIT ?";
+
+  if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+    sqlite3_bind_text(stmt, 1, deviceId.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 2, n);
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+      SampleData s = {};
+      s.id                 = sqlite3_column_int(stmt, 0);
+      s.timestamp          = sqlite3_column_int64(stmt, 1);
+      s.raw_adc            = sqlite3_column_int(stmt, 2);
+      s.temp_c             = sqlite3_column_double(stmt, 3);
+      s.theta              = sqlite3_column_double(stmt, 4);
+      s.theta_fc           = sqlite3_column_double(stmt, 5);
+      s.theta_refill       = sqlite3_column_double(stmt, 6);
+      s.psi_kpa            = sqlite3_column_double(stmt, 7);
+      s.aw_mm              = sqlite3_column_double(stmt, 8);
+      s.fraction_depleted  = sqlite3_column_double(stmt, 9);
+      s.drying_rate        = sqlite3_column_double(stmt, 10);
+      s.regime   = String((const char *)sqlite3_column_text(stmt, 11));
+      s.status   = String((const char *)sqlite3_column_text(stmt, 12));
+      s.urgency  = String((const char *)sqlite3_column_text(stmt, 13));
+      s.confidence         = sqlite3_column_double(stmt, 14);
+      s.qc_valid           = sqlite3_column_int(stmt, 15) != 0;
+      s.seq                = sqlite3_column_int(stmt, 16);
+      s.air_temp_c         = sqlite3_column_double(stmt, 17);
+      s.humidity           = sqlite3_column_double(stmt, 18);
+      s.raw_adc_2          = sqlite3_column_int(stmt, 19);
+      s.theta_2            = sqlite3_column_double(stmt, 20);
+      s.device_id          = String((const char *)sqlite3_column_text(stmt, 21));
+      s.battery_pct        = sqlite3_column_int(stmt, 22);
+      res.push_back(s);
+    }
+  }
+  sqlite3_finalize(stmt);
+  return res;
+}
+
+time_t DBManager::getDeviceLastSeen(const String &deviceId) {
+  sqlite3_stmt *stmt;
+  const char *sql = "SELECT MAX(timestamp) FROM samples WHERE device_id = ?";
+  time_t result = 0;
+  if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+    sqlite3_bind_text(stmt, 1, deviceId.c_str(), -1, SQLITE_TRANSIENT);
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+      result = (time_t)sqlite3_column_int64(stmt, 0);
+  }
+  sqlite3_finalize(stmt);
+  return result;
 }
 
 bool DBManager::executeSQL(const char *sql) {

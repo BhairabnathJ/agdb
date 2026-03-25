@@ -9,16 +9,16 @@
 
 #include "db_manager.h"
 #include "physics_engine.h"
-#include <DHT.h>
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <DHT.h>
 #include <DallasTemperature.h>
 #include <ESPAsyncWebServer.h>
 #include <OneWire.h>
 #include <SD.h>
 #include <WiFi.h>
-#include <esp_now.h> // Issue 7: ESP-NOW for CropBand pairing
-#include <map>       // Issue 7: per-device physics instances
+#include <esp_now.h>  // Issue 7: ESP-NOW for CropBand pairing
+#include <map>        // Issue 7: per-device physics instances
 
 // =============================================================================
 // PIN DEFINITIONS
@@ -29,7 +29,7 @@
 #define TEMP_PIN 4
 // DHT22 humidity sensor — Data→GPIO16, 10kΩ pullup to 3.3V
 #define DHT_PIN 16
-#define SD_CS 5 // Change if your CS pin is different
+#define SD_CS 5  // Change if your CS pin is different
 
 // =============================================================================
 // GLOBALS
@@ -49,6 +49,7 @@ static uint32_t seqTimestamp = 1000000;
 
 // Cache of latest physics output — read by /api/current without DB round-trip
 static SensorReading lastReading = {};
+static SampleData lastCachedSample = {};
 static float lastAirTemp = -1.0f;
 static float lastHumidity = -1.0f;
 
@@ -56,12 +57,15 @@ static float lastHumidity = -1.0f;
 static SensorCalibration sensor2Cal;
 
 // Issue 7: ESP-NOW CropBand packet format
-typedef struct {
-  uint8_t version; // must be 1
-  uint16_t raw_adc;
-  float temp_c;
-  uint32_t timestamp;
-  uint8_t crc8;
+typedef struct __attribute__((packed)) {
+  uint8_t version;      // must be 1
+  uint16_t raw_adc;     // soil moisture ADC 0-4095, or 0xFFFF if sensor absent
+  float temp_c;         // DS18B20 temp in Celsius, or -1.0 if unavailable
+  float humidity;       // DHT22 humidity %, or -1.0 if unavailable
+  float air_temp_c;     // DHT22 air temp in Celsius, or -1.0 if unavailable
+  uint8_t battery_pct;  // 0-100, or 255 if unknown
+  uint32_t timestamp;   // Unix timestamp or 0 if no RTC
+  uint8_t crc8;         // CRC8 over all preceding bytes
 } CropBandPacket;
 
 // Issue 7: per-device physics instances
@@ -105,7 +109,7 @@ bool loadThresholds() {
       long planting_ts = prefs["planting_ts"] | 0L;
       if (planting_ts > 0 && time(nullptr) > planting_ts)
         activeCrop.days_after_planting =
-            (int)((time(nullptr) - planting_ts) / 86400);
+          (int)((time(nullptr) - planting_ts) / 86400);
     }
     prefsFile.close();
   }
@@ -122,7 +126,7 @@ bool loadThresholds() {
 
   DynamicJsonDocument doc(12288);
   DeserializationError err =
-      deserializeJson(doc, threshFile, DeserializationOption::Filter(filter));
+    deserializeJson(doc, threshFile, DeserializationOption::Filter(filter));
   threshFile.close();
 
   if (err) {
@@ -139,7 +143,7 @@ bool loadThresholds() {
   }
 
   JsonArray stages =
-      doc["crops"][activeCrop.crop_key]["stages"].as<JsonArray>();
+    doc["crops"][activeCrop.crop_key]["stages"].as<JsonArray>();
   if (stages.isNull())
     stages = doc["crops"]["tomato"]["stages"].as<JsonArray>();
   if (stages.isNull() || stages.size() == 0) {
@@ -154,8 +158,7 @@ bool loadThresholds() {
   for (JsonObject stage : stages) {
     int ds = stage["day_start"] | 0;
     int de = stage["day_end"] | 0;
-    if (activeCrop.days_after_planting >= ds &&
-        activeCrop.days_after_planting <= de) {
+    if (activeCrop.days_after_planting >= ds && activeCrop.days_after_planting <= de) {
       activeStage = stage;
       break;
     }
@@ -165,8 +168,7 @@ bool loadThresholds() {
   activeCrop.Zr_cm = activeStage["Zr_cm"] | 30.0f;
   activeCrop.stage_name = activeStage["name"] | "early";
   activeCrop.theta_refill =
-      activeCrop.theta_fc -
-      activeCrop.p * (activeCrop.theta_fc - activeCrop.theta_wp);
+    activeCrop.theta_fc - activeCrop.p * (activeCrop.theta_fc - activeCrop.theta_wp);
   activeCrop.loaded = true;
 
   Serial.printf("[THRESH] Crop=%s Soil=%s DAP=%d\n",
@@ -277,12 +279,12 @@ void loadCalibration(const String &deviceMac) {
   JsonObject cal = doc["autoCalibration"];
   if (!cal.isNull()) {
     eng->restoreCalibrationState(
-        {.theta_fc_star = cal["theta_fc_star"] | activeCrop.theta_fc,
-         .theta_refill_star =
-             cal["theta_refill_star"] | activeCrop.theta_refill,
-         .confidence = cal["confidence"] | 0.0f,
-         .n_events = cal["n_events"] | 0,
-         .n_fc_updates = cal["n_fc_updates"] | 0});
+      { .theta_fc_star = cal["theta_fc_star"] | activeCrop.theta_fc,
+        .theta_refill_star =
+          cal["theta_refill_star"] | activeCrop.theta_refill,
+        .confidence = cal["confidence"] | 0.0f,
+        .n_events = cal["n_events"] | 0,
+        .n_fc_updates = cal["n_fc_updates"] | 0 });
     Serial.printf("[CAL] Restored calibration for %s\n", deviceMac.c_str());
   }
 }
@@ -333,7 +335,7 @@ void registerUnknownDevice(const String &mac) {
   // Check not already present
   for (JsonObject dev : doc["devices"].as<JsonArray>()) {
     if (dev["mac"] == mac)
-      return; // already registered
+      return;  // already registered
   }
 
   JsonObject entry = doc["devices"].createNestedObject();
@@ -348,16 +350,16 @@ void registerUnknownDevice(const String &mac) {
   Serial.printf("[ESPNOW] New device seen: %s\n", mac.c_str());
 }
 
-void runPhysicsForDevice(int raw_adc, float temp_c, time_t ts,
-                         const String &deviceId) {
+SensorReading runPhysicsForDevice(int raw_adc, float temp_c, time_t ts,
+                                  const String &deviceId) {
   if (deviceEngines.find(deviceId) == deviceEngines.end()) {
     deviceEngines[deviceId] = new PhysicsEngine();
     if (activeCrop.loaded) {
       deviceEngines[deviceId]->configureCropSoil(
-          activeCrop.crop_key.c_str(), activeCrop.soil_key.c_str(),
-          activeCrop.p, activeCrop.theta_fc, activeCrop.theta_wp,
-          activeCrop.theta_refill,
-          (long)(time(nullptr) - activeCrop.days_after_planting * 86400L));
+        activeCrop.crop_key.c_str(), activeCrop.soil_key.c_str(),
+        activeCrop.p, activeCrop.theta_fc, activeCrop.theta_wp,
+        activeCrop.theta_refill,
+        (long)(time(nullptr) - activeCrop.days_after_planting * 86400L));
     }
   }
   PhysicsEngine *eng = deviceEngines[deviceId];
@@ -365,9 +367,11 @@ void runPhysicsForDevice(int raw_adc, float temp_c, time_t ts,
   Serial.printf("[ESPNOW] Device %s theta=%.3f status=%s\n", deviceId.c_str(),
                 reading.theta, reading.status);
   saveCalibration(deviceId);
+  return reading;
 }
 
-void onEspNowReceive(const esp_now_recv_info *recv_info, const uint8_t *data, int len) {
+void onEspNowReceive(const esp_now_recv_info *recv_info, const uint8_t *data,
+                     int len) {
   if (len < (int)sizeof(CropBandPacket))
     return;
 
@@ -386,21 +390,76 @@ void onEspNowReceive(const esp_now_recv_info *recv_info, const uint8_t *data, in
   // Build MAC string
   char macStr[18];
   snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
-           recv_info->src_addr[0], recv_info->src_addr[1], recv_info->src_addr[2],
-           recv_info->src_addr[3], recv_info->src_addr[4], recv_info->src_addr[5]);
+           recv_info->src_addr[0], recv_info->src_addr[1],
+           recv_info->src_addr[2], recv_info->src_addr[3],
+           recv_info->src_addr[4], recv_info->src_addr[5]);
   String macString(macStr);
 
   if (!isPairedDevice(macString)) {
     registerUnknownDevice(macString);
-    return; // ignore data from unpaired devices
+    return;  // ignore data from unpaired devices
   }
 
   time_t ts = (time_t)pkt.timestamp;
   if (ts < 1000000)
     ts = time(nullptr);
 
-  if (validateSensorReading(pkt.raw_adc, pkt.temp_c)) {
-    runPhysicsForDevice(pkt.raw_adc, pkt.temp_c, ts, macString);
+  int battPct = (pkt.battery_pct == 255) ? -1 : (int)pkt.battery_pct;
+
+  if (pkt.raw_adc == 0xFFFF) {
+    // No soil sensor — write a metadata-only row
+    SampleData s;
+    s.device_id = macString;
+    s.battery_pct = battPct;
+    s.timestamp = ts;
+    s.raw_adc = -1;
+    s.temp_c = pkt.temp_c;
+    s.humidity = pkt.humidity;
+    s.air_temp_c = pkt.air_temp_c;
+    s.theta = -1;
+    s.theta_fc = -1;
+    s.theta_refill = -1;
+    s.psi_kpa = -1;
+    s.aw_mm = -1;
+    s.fraction_depleted = -1;
+    s.drying_rate = -1;
+    s.regime = "unknown";
+    s.status = "no_soil";
+    s.urgency = "none";
+    s.confidence = 0;
+    s.qc_valid = false;
+    s.seq = 0;
+    s.theta_2 = -1;
+    s.raw_adc_2 = -1;
+    std::vector<SampleData> batch = { s };
+    dbManager.writeSampleBatch(batch);
+  } else {
+    SensorReading reading = runPhysicsForDevice(pkt.raw_adc, pkt.temp_c, ts, macString);
+    SampleData s;
+    s.device_id = macString;
+    s.battery_pct = battPct;
+    s.timestamp = ts;
+    s.raw_adc = pkt.raw_adc;
+    s.temp_c = pkt.temp_c;
+    s.humidity = pkt.humidity;
+    s.air_temp_c = pkt.air_temp_c;
+    s.theta = reading.theta;
+    s.theta_fc = reading.theta_fc;
+    s.theta_refill = reading.theta_refill;
+    s.psi_kpa = reading.psi_kPa;
+    s.aw_mm = reading.AW_mm;
+    s.fraction_depleted = reading.fractionDepleted;
+    s.drying_rate = reading.dryingRate_per_hr;
+    s.regime = String(reading.regime);
+    s.status = String(reading.status);
+    s.urgency = String(reading.urgency);
+    s.confidence = reading.confidence;
+    s.qc_valid = reading.qc_valid;
+    s.seq = 0;
+    s.theta_2 = -1;
+    s.raw_adc_2 = -1;
+    std::vector<SampleData> batch = { s };
+    dbManager.writeSampleBatch(batch);
   }
 }
 
@@ -421,30 +480,29 @@ void setup() {
   // Sensor checks
   int soilRaw = analogRead(SOIL_PIN);
   Serial.println(soilRaw > 0 && soilRaw < 4095
-                     ? "✅ Soil sensor 1 (GPIO34) CONNECTED — Raw: " + String(soilRaw)
-                     : "❌ Soil sensor 1 (GPIO34) NOT connected");
+                   ? "✅ Soil sensor 1 (GPIO34) CONNECTED — Raw: " + String(soilRaw)
+                   : "❌ Soil sensor 1 (GPIO34) NOT connected");
 
   int soilRaw2 = analogRead(SOIL_SENSOR_2_PIN);
   Serial.println(soilRaw2 > 0 && soilRaw2 < 4095
-                     ? "✅ Soil sensor 2 (GPIO35) CONNECTED — Raw: " + String(soilRaw2)
-                     : "❌ Soil sensor 2 (GPIO35) NOT connected");
+                   ? "✅ Soil sensor 2 (GPIO35) CONNECTED — Raw: " + String(soilRaw2)
+                   : "❌ Soil sensor 2 (GPIO35) NOT connected");
 
   tempSensor.begin();
   if (tempSensor.getDeviceCount() > 0) {
     tempSensor.requestTemperatures();
-    Serial.println("✅ DS18B20 CONNECTED — Temp: " +
-                   String(tempSensor.getTempCByIndex(0)) + "°C");
+    Serial.println("✅ DS18B20 CONNECTED — Temp: " + String(tempSensor.getTempCByIndex(0)) + "°C");
   } else {
     Serial.println("❌ DS18B20 NOT found — check wiring + 4.7kΩ pullup");
   }
 
   dht.begin();
-  delay(2000); // DHT22 needs ~2 s after power-up before first read
+  delay(2000);  // DHT22 needs ~2 s after power-up before first read
   float dhtH = dht.readHumidity();
   float dhtT = dht.readTemperature();
-  Serial.println(!isnan(dhtH)
-                     ? "✅ DHT22 CONNECTED — Humidity: " + String(dhtH, 1) + "% Temp: " + String(dhtT, 1) + "°C"
-                     : "❌ DHT22 NOT found — check GPIO16, 10kΩ pullup to 3.3V");
+  Serial.println(
+    !isnan(dhtH) ? "✅ DHT22 CONNECTED — Humidity: " + String(dhtH, 1) + "% Temp: " + String(dhtT, 1) + "°C"
+                 : "❌ DHT22 NOT found — check GPIO16, 10kΩ pullup to 3.3V");
 
   // SD card
   if (!SD.begin(SD_CS)) {
@@ -477,9 +535,9 @@ void setup() {
   // Physics engine - native C++, no Duktape
   if (loadThresholds() && activeCrop.loaded) {
     Physics.configureCropSoil(
-        activeCrop.crop_key.c_str(), activeCrop.soil_key.c_str(), activeCrop.p,
-        activeCrop.theta_fc, activeCrop.theta_wp, activeCrop.theta_refill,
-        (long)(time(nullptr) - activeCrop.days_after_planting * 86400L));
+      activeCrop.crop_key.c_str(), activeCrop.soil_key.c_str(), activeCrop.p,
+      activeCrop.theta_fc, activeCrop.theta_wp, activeCrop.theta_refill,
+      (long)(time(nullptr) - activeCrop.days_after_planting * 86400L));
   } else {
     Serial.println("[BOOT] Using physics defaults");
   }
@@ -497,13 +555,40 @@ void setup() {
   server.serveStatic("/", SD, "/www/").setDefaultFile("index.html");
 
   server.on("/api/current", HTTP_GET, [](AsyncWebServerRequest *req) {
-    SampleData s = dbManager.getLatestSample();
+    if (req->hasParam("device")) {
+      String devId = req->getParam("device")->value();
+      SampleData s = dbManager.getLatestSampleForDevice(devId);
+      String json = "{";
+      json += "\"timestamp\":" + String(s.timestamp) + ",";
+      json += "\"raw_adc\":" + String(s.raw_adc) + ",";
+      json += "\"raw_adc_2\":" + String(s.raw_adc_2) + ",";
+      json += "\"temp_c\":" + String(s.temp_c, 1) + ",";
+      json += "\"soil_temp_c\":" + String(s.temp_c, 1) + ",";
+      json += "\"air_temp_c\":" + String(s.air_temp_c, 1) + ",";
+      json += "\"humidity\":" + String(s.humidity, 1) + ",";
+      json += "\"theta\":" + String(s.theta, 4) + ",";
+      json += "\"theta_2\":" + String(s.theta_2, 4) + ",";
+      json += "\"psi_kpa\":" + String(s.psi_kpa, 2) + ",";
+      json += "\"aw_mm\":" + String(s.aw_mm, 1) + ",";
+      json += "\"fractionDepleted\":" + String(s.fraction_depleted, 3) + ",";
+      json += "\"dryingRate_per_hr\":" + String(s.drying_rate, 4) + ",";
+      json += "\"regime\":\"" + s.regime + "\",";
+      json += "\"status\":\"" + s.status + "\",";
+      json += "\"urgency\":\"" + s.urgency + "\",";
+      json += "\"qc_valid\":" + String(s.qc_valid ? "true" : "false") + ",";
+      json += "\"confidence\":" + String(s.confidence, 2) + ",";
+      json += "\"battery_pct\":" + String(s.battery_pct);
+      json += "}";
+      req->send(200, "application/json", json);
+      return;
+    }
+    SampleData s = lastCachedSample;
     String json = "{";
     json += "\"timestamp\":" + String(s.timestamp) + ",";
     json += "\"raw_adc\":" + String(s.raw_adc) + ",";
     json += "\"raw_adc_2\":" + String(s.raw_adc_2) + ",";
-    json += "\"temp_c\":" + String(s.temp_c, 1) + ",";
-    json += "\"soil_temp_c\":" + String(s.temp_c, 1) + ",";
+    json += "\"temp_c\":" + String(lastReading.temp_c, 1) + ",";
+    json += "\"soil_temp_c\":" + String(lastReading.temp_c, 1) + ",";
     json += "\"air_temp_c\":" + String(lastAirTemp, 1) + ",";
     json += "\"humidity\":" + String(lastHumidity, 1) + ",";
     json += "\"theta\":" + String(s.theta, 4) + ",";
@@ -513,14 +598,18 @@ void setup() {
     json += "\"Se\":" + String(lastReading.Se, 4) + ",";
     json += "\"TAW_mm\":" + String(lastReading.TAW_mm, 1) + ",";
     json += "\"Dr_mm\":" + String(lastReading.Dr_mm, 1) + ",";
-    json += "\"fractionDepleted\":" + String(lastReading.fractionDepleted, 3) + ",";
-    json += "\"dryingRate_per_hr\":" + String(lastReading.dryingRate_per_hr, 4) + ",";
+    json +=
+      "\"fractionDepleted\":" + String(lastReading.fractionDepleted, 3) + ",";
+    json +=
+      "\"dryingRate_per_hr\":" + String(lastReading.dryingRate_per_hr, 4) + ",";
     json += "\"regime\":\"" + String(lastReading.regime) + "\",";
     json += "\"status\":\"" + s.status + "\",";
     json += "\"urgency\":\"" + s.urgency + "\",";
-    json += "\"recommendation\":\"" + String(lastReading.recommendation) + "\",";
+    json +=
+      "\"recommendation\":\"" + String(lastReading.recommendation) + "\",";
     json += "\"calibration_state\":\"" + String(lastReading.calibration_state) + "\",";
-    json += "\"qc_valid\":" + String(lastReading.qc_valid ? "true" : "false") + ",";
+    json +=
+      "\"qc_valid\":" + String(lastReading.qc_valid ? "true" : "false") + ",";
     json += "\"confidence\":" + String(s.confidence, 2) + ",";
     json += "\"theta_fc\":" + String(activeCrop.theta_fc, 3) + ",";
     json += "\"theta_refill\":" + String(activeCrop.theta_refill, 3) + ",";
@@ -537,7 +626,11 @@ void setup() {
     if (limit < 1 || limit > 200)
       limit = 144;
 
-    auto series = dbManager.getRecentSamples(limit);
+    String devId = "HUB_ONBOARD";
+    if (req->hasParam("device"))
+      devId = req->getParam("device")->value();
+    auto series = (devId == "HUB_ONBOARD") ? dbManager.getRecentSamples(limit)
+                                           : dbManager.getRecentSamples(limit, devId);
     String json = "[";
     for (size_t i = 0; i < series.size(); i++) {
       if (i > 0)
@@ -546,6 +639,10 @@ void setup() {
       json += "\"theta\":" + String(series[i].theta, 4) + ",";
       json += "\"theta_2\":" + String(series[i].theta_2, 4) + ",";
       json += "\"raw_adc_2\":" + String(series[i].raw_adc_2) + ",";
+      json += "\"temp_c\":" + String(series[i].temp_c, 1) + ",";
+      json += "\"air_temp_c\":" + String(series[i].air_temp_c, 1) + ",";
+      json += "\"theta_fc\":" + String(series[i].theta_fc, 3) + ",";
+      json += "\"theta_refill\":" + String(series[i].theta_refill, 3) + ",";
       json += "\"humidity\":" + String(series[i].humidity, 1) + "}";
     }
     json += "]";
@@ -571,9 +668,11 @@ void setup() {
       String mac = dev["mac"] | "";
       bool paired = dev["paired"] | false;
       bool online = (deviceEngines.find(mac) != deviceEngines.end());
+      time_t lastSeen = dbManager.getDeviceLastSeen(mac);
       json += "{\"mac\":\"" + mac + "\",";
       json += "\"paired\":" + String(paired ? "true" : "false") + ",";
-      json += "\"online\":" + String(online ? "true" : "false") + "}";
+      json += "\"online\":" + String(online ? "true" : "false") + ",";
+      json += "\"last_seen\":" + String((long)lastSeen) + "}";
     }
     json += "]";
     req->send(200, "application/json", json);
@@ -630,27 +729,27 @@ void setup() {
   });
 
   server.on(
-      "/api/config", HTTP_POST,
-      [](AsyncWebServerRequest *req) {
-        req->send(200, "application/json", "{\"success\":true}");
-      },
-      nullptr,
-      [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index,
-         size_t total) {
-        static String configBody;
-        if (index == 0)
-          configBody = "";
-        for (size_t i = 0; i < len; i++)
-          configBody += (char)data[i];
-        if (index + len >= total) {
-          File f = SD.open("/config/user_prefs.json", FILE_WRITE);
-          if (f) {
-            f.print(configBody);
-            f.close();
-          }
-          loadThresholds();
+    "/api/config", HTTP_POST,
+    [](AsyncWebServerRequest *req) {
+      req->send(200, "application/json", "{\"success\":true}");
+    },
+    nullptr,
+    [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index,
+       size_t total) {
+      static String configBody;
+      if (index == 0)
+        configBody = "";
+      for (size_t i = 0; i < len; i++)
+        configBody += (char)data[i];
+      if (index + len >= total) {
+        File f = SD.open("/config/user_prefs.json", FILE_WRITE);
+        if (f) {
+          f.print(configBody);
+          f.close();
         }
-      });
+        loadThresholds();
+      }
+    });
 
   server.on("/api/diagnostics", HTTP_GET, [](AsyncWebServerRequest *req) {
     String json = "{";
@@ -698,7 +797,9 @@ void setup() {
   });
 
   server.onNotFound(
-      [](AsyncWebServerRequest *req) { req->redirect("http://192.168.4.1"); });
+    [](AsyncWebServerRequest *req) {
+      req->redirect("http://192.168.4.1");
+    });
 
   server.begin();
   Serial.println("[BOOT] AgriScan ready");
@@ -726,6 +827,8 @@ void loop() {
     float air_temp = dht.readTemperature();
     if (isnan(air_temp))
       air_temp = -1.0f;
+    Serial.printf("[ENV] soil_temp=%.2f air_temp=%.2f humidity=%.2f\n", temp,
+                  air_temp, humidity);
 
     time_t ts = time(nullptr);
     if (ts < 1000000)
@@ -746,7 +849,12 @@ void loop() {
       lastReading = reading;
 
       // Sensor 2: apply same calibration curve independently
-      float theta2 = sensor2Cal.calibrate(raw2, temp);
+      float theta2;
+      if (raw2 == 0) {
+        theta2 = -1.0;
+      } else {
+        theta2 = sensor2Cal.calibrate(raw2, temp);
+      }
 
       SampleData s;
       s.timestamp = reading.timestamp;
@@ -769,10 +877,11 @@ void loop() {
       s.confidence = reading.confidence;
       s.qc_valid = reading.qc_valid;
       s.seq = (int)(seqTimestamp - 1000000);
+      lastCachedSample = s;
 
-      Serial.printf("[SENSOR1] raw=%d theta=%.3f status=%s urgency=%s conf=%.2f\n",
-                    raw, reading.theta, reading.status, reading.urgency,
-                    reading.confidence);
+      Serial.printf(
+        "[SENSOR1] raw=%d theta=%.3f status=%s urgency=%s conf=%.2f\n", raw,
+        reading.theta, reading.status, reading.urgency, reading.confidence);
       Serial.printf("[SENSOR2] raw=%d theta=%.3f\n", raw2, theta2);
 
       sampleBuffer.push_back(s);
