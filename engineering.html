@@ -339,8 +339,8 @@
     const labels = [];
     const thetaData = [];
     const thetaData2 = [];
-    const thetaFcData  = [];
-    const thetaRefill  = [];
+    const thetaFcData = [];
+    const thetaRefill = [];
     const thetaSatData = [];
     const soilTempData = [];
     const airTempData = [];
@@ -585,8 +585,7 @@
 
     // ── Data push ─────────────────────────────────────────────────────────────
     function pushPoint(data) {
-      const ts = data.timestamp;
-      const label = ts ? new Date(ts * 1000).toLocaleTimeString() : '--';
+      const label = new Date().toLocaleTimeString();
 
       labels.push(label);
       thetaData.push(data.theta ?? null);
@@ -618,19 +617,19 @@
     // ── Calibration tracker ───────────────────────────────────────────────────
     const MAX_CAL_LOG = 50;
     const calLog = [];
-    let prevThetaFc     = null;
+    let prevThetaFc = null;
     let prevThetaRefill = null;
 
     function updateCalTracker(data) {
-      const fc     = data.theta_fc;
+      const fc = data.theta_fc;
       const refill = data.theta_refill;
-      const state  = data.calibration_state;
-      const conf   = data.confidence;
+      const state = data.calibration_state;
+      const conf = data.confidence;
 
-      document.getElementById('cal_fc').textContent    = fc     !== undefined ? fc.toFixed(3)              : '--';
-      document.getElementById('cal_refill').textContent= refill !== undefined ? refill.toFixed(3)          : '--';
-      document.getElementById('cal_state').textContent = state  !== undefined ? (state || 'INIT')          : '--';
-      document.getElementById('cal_conf').textContent  = conf   !== undefined ? (conf * 100).toFixed(0)    : '--';
+      document.getElementById('cal_fc').textContent = fc !== undefined ? fc.toFixed(3) : '--';
+      document.getElementById('cal_refill').textContent = refill !== undefined ? refill.toFixed(3) : '--';
+      document.getElementById('cal_state').textContent = state !== undefined ? (state || 'INIT') : '--';
+      document.getElementById('cal_conf').textContent = conf !== undefined ? (conf * 100).toFixed(0) : '--';
 
       const ts = new Date().toLocaleTimeString();
       const EPS = 0.0005; // ignore sub-0.001 float noise
@@ -644,14 +643,14 @@
 
       if (calLog.length > MAX_CAL_LOG) calLog.length = MAX_CAL_LOG;
 
-      prevThetaFc     = fc;
+      prevThetaFc = fc;
       prevThetaRefill = refill;
 
       const tbody = document.getElementById('calLogBody');
       if (calLog.length === 0) return;
 
       document.getElementById('calLogEmpty').style.display = 'none';
-      document.getElementById('calLogTable').style.display  = '';
+      document.getElementById('calLogTable').style.display = '';
 
       tbody.innerHTML = calLog.map(e =>
         `<tr>` +
@@ -703,8 +702,37 @@
     // ── Boot ──────────────────────────────────────────────────────────────────
     buildCards();
     initCharts();
-    fetchData();
-    setInterval(fetchData, 2000);
+
+    // Load history on boot
+    fetch('/api/series?limit=200')
+      .then(r => r.json())
+      .then(series => {
+        const now = Date.now();
+        const interval = 2000;
+        const startTime = now - (series.length * interval);
+
+        series.forEach((pt, i) => {
+          const label = new Date(startTime + (i * interval)).toLocaleTimeString();
+          labels.push(label);
+          thetaData.push(pt.theta ?? null);
+          thetaData2.push((pt.raw_adc_2 > 0 && pt.theta_2 != null && pt.theta_2 >= 0) ? pt.theta_2 : null);
+          thetaFcData.push(pt.theta_fc ?? null);
+          thetaRefill.push(pt.theta_refill ?? null);
+          thetaSatData.push(pt.theta_sat ?? 0.45);
+          soilTempData.push(pt.soil_temp_c ?? null);
+          airTempData.push((pt.air_temp_c ?? -1) <= -0.5 ? null : pt.air_temp_c);
+          humData.push((pt.humidity ?? -1) <= -0.5 ? null : pt.humidity);
+        });
+
+        chartTheta.update();
+        chartEnv.update();
+        fetchData();
+        setInterval(fetchData, 2000);
+      })
+      .catch(() => {
+        fetchData();
+        setInterval(fetchData, 2000);
+      });
   </script>
 </body>
 
