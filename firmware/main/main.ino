@@ -479,14 +479,14 @@ void setup() {
 
   // Sensor checks
   int soilRaw = analogRead(SOIL_PIN);
-  Serial.println(soilRaw > 0 && soilRaw < 4095
+  Serial.println(soilRaw >= 200 && soilRaw <= 3900
                    ? "✅ Soil sensor 1 (GPIO34) CONNECTED — Raw: " + String(soilRaw)
-                   : "❌ Soil sensor 1 (GPIO34) NOT connected");
+                   : "❌ Soil sensor 1 (GPIO34) NOT connected — Raw: " + String(soilRaw));
 
   int soilRaw2 = analogRead(SOIL_SENSOR_2_PIN);
-  Serial.println(soilRaw2 > 0 && soilRaw2 < 4095
+  Serial.println(soilRaw2 >= 200 && soilRaw2 <= 3900
                    ? "✅ Soil sensor 2 (GPIO35) CONNECTED — Raw: " + String(soilRaw2)
-                   : "❌ Soil sensor 2 (GPIO35) NOT connected");
+                   : "❌ Soil sensor 2 (GPIO35) NOT connected — Raw: " + String(soilRaw2));
 
   tempSensor.begin();
   if (tempSensor.getDeviceCount() > 0) {
@@ -840,49 +840,52 @@ void loop() {
       lastAirTemp = air_temp;
     }
 
-    // Issue 11: validate before processing
-    if (!validateSensorReading(raw, temp)) {
-      Serial.println("[QC] Reading skipped");
-    } else {
-      // Native C++ physics - no JS, no Duktape
-      SensorReading reading = Physics.processSensorReading(raw, temp, ts);
-      lastReading = reading;
+    bool s1Valid = validateSensorReading(raw, temp);
+    bool s2Valid = validateSensorReading(raw2, temp);
 
-      // Sensor 2: apply same calibration curve independently
-      float theta2;
-      if (raw2 == 0) {
-        theta2 = -1.0;
+    if (!s1Valid && !s2Valid) {
+      Serial.println("[QC] Both sensors out of range — skipping");
+    } else {
+      SensorReading reading = {};
+      if (s1Valid) {
+        reading = Physics.processSensorReading(raw, temp, ts);
+        lastReading = reading;
+        Serial.printf("[SENSOR1] raw=%d theta=%.3f status=%s urgency=%s conf=%.2f\n",
+          raw, reading.theta, reading.status, reading.urgency, reading.confidence);
       } else {
+        Serial.printf("[SENSOR1] raw=%d — QC failed, skipped\n", raw);
+      }
+
+      float theta2 = -1.0f;
+      if (s2Valid) {
         theta2 = sensor2Cal.calibrate(raw2, temp);
+        Serial.printf("[SENSOR2] raw=%d theta=%.3f\n", raw2, theta2);
+      } else {
+        Serial.printf("[SENSOR2] raw=%d — QC failed, skipped\n", raw2);
       }
 
       SampleData s;
-      s.timestamp = reading.timestamp;
-      s.raw_adc = reading.raw_adc;
-      s.raw_adc_2 = raw2;
-      s.temp_c = reading.temp_c;
+      s.timestamp = s1Valid ? reading.timestamp : ts;
+      s.raw_adc = s1Valid ? reading.raw_adc : -1;
+      s.raw_adc_2 = s2Valid ? raw2 : -1;
+      s.temp_c = s1Valid ? reading.temp_c : temp;
       s.humidity = humidity;
       s.air_temp_c = air_temp;
-      s.theta = reading.theta;
+      s.theta = s1Valid ? reading.theta : -1.0f;
       s.theta_2 = theta2;
-      s.theta_fc = reading.theta_fc;
-      s.theta_refill = reading.theta_refill;
-      s.psi_kpa = reading.psi_kPa;
-      s.aw_mm = reading.AW_mm;
-      s.fraction_depleted = reading.fractionDepleted;
-      s.drying_rate = reading.dryingRate_per_hr;
-      s.regime = String(reading.regime);
-      s.status = String(reading.status);
-      s.urgency = String(reading.urgency);
-      s.confidence = reading.confidence;
-      s.qc_valid = reading.qc_valid;
+      s.theta_fc = s1Valid ? reading.theta_fc : activeCrop.theta_fc;
+      s.theta_refill = s1Valid ? reading.theta_refill : activeCrop.theta_refill;
+      s.psi_kpa = s1Valid ? reading.psi_kPa : -1.0f;
+      s.aw_mm = s1Valid ? reading.AW_mm : -1.0f;
+      s.fraction_depleted = s1Valid ? reading.fractionDepleted : -1.0f;
+      s.drying_rate = s1Valid ? reading.dryingRate_per_hr : -1.0f;
+      s.regime = s1Valid ? String(reading.regime) : "unknown";
+      s.status = s1Valid ? String(reading.status) : "no_soil";
+      s.urgency = s1Valid ? String(reading.urgency) : "none";
+      s.confidence = s1Valid ? reading.confidence : 0.0f;
+      s.qc_valid = s1Valid ? reading.qc_valid : false;
       s.seq = (int)(seqTimestamp - 1000000);
       lastCachedSample = s;
-
-      Serial.printf(
-        "[SENSOR1] raw=%d theta=%.3f status=%s urgency=%s conf=%.2f\n", raw,
-        reading.theta, reading.status, reading.urgency, reading.confidence);
-      Serial.printf("[SENSOR2] raw=%d theta=%.3f\n", raw2, theta2);
 
       sampleBuffer.push_back(s);
       if ((int)sampleBuffer.size() >= BATCH_SIZE) {
@@ -891,8 +894,7 @@ void loop() {
         Serial.println("[DB] Batch flushed");
       }
 
-      // Issue 2: persist calibration state after each reading
-      saveCalibration("HUB_ONBOARD");
+      if (s1Valid) saveCalibration("HUB_ONBOARD");
     }
   }
 }

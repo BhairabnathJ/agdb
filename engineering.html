@@ -588,7 +588,7 @@
       const label = new Date().toLocaleTimeString();
 
       labels.push(label);
-      thetaData.push(data.theta ?? null);
+      thetaData.push((data.theta != null && data.theta >= 0) ? data.theta : null);
       thetaData2.push((data.theta_2 != null && data.theta_2 >= 0) ? data.theta_2 : null);
       thetaFcData.push(data.theta_fc ?? null);
       thetaRefill.push(data.theta_refill ?? null);
@@ -714,12 +714,12 @@
         series.forEach((pt, i) => {
           const label = new Date(startTime + (i * interval)).toLocaleTimeString();
           labels.push(label);
-          thetaData.push(pt.theta ?? null);
+          thetaData.push((pt.theta != null && pt.theta >= 0) ? pt.theta : null);
           thetaData2.push((pt.raw_adc_2 > 0 && pt.theta_2 != null && pt.theta_2 >= 0) ? pt.theta_2 : null);
           thetaFcData.push(pt.theta_fc ?? null);
           thetaRefill.push(pt.theta_refill ?? null);
           thetaSatData.push(pt.theta_sat ?? 0.45);
-          soilTempData.push(pt.soil_temp_c ?? null);
+          soilTempData.push((pt.temp_c ?? -1) <= -0.5 ? null : pt.temp_c);
           airTempData.push((pt.air_temp_c ?? -1) <= -0.5 ? null : pt.air_temp_c);
           humData.push((pt.humidity ?? -1) <= -0.5 ? null : pt.humidity);
         });

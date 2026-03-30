@@ -31,12 +31,12 @@ struct ColDef {
 //     handle it defensively without alarming the log)
 //   - any other failure (including parser stack overflow) → log warning and
 //     continue; never blocks boot
-static void migrateTable(sqlite3 *db, const char *table,
-                         const ColDef *cols, int nCols) {
+static void migrateTable(sqlite3 *db, const char *table, const ColDef *cols,
+                         int nCols) {
   // Cap at 32 to accommodate future column additions without code changes
   static const int MAX_COLS = 32;
   bool found[MAX_COLS] = {};
-  int  check = nCols < MAX_COLS ? nCols : MAX_COLS;
+  int check = nCols < MAX_COLS ? nCols : MAX_COLS;
 
   char pragma[64];
   snprintf(pragma, sizeof(pragma), "PRAGMA table_info(%s)", table);
@@ -45,19 +45,24 @@ static void migrateTable(sqlite3 *db, const char *table,
   if (sqlite3_prepare_v2(db, pragma, -1, &stmt, nullptr) == SQLITE_OK) {
     while (sqlite3_step(stmt) == SQLITE_ROW) {
       const char *cn = (const char *)sqlite3_column_text(stmt, 1);
-      if (!cn) continue;
+      if (!cn)
+        continue;
       for (int i = 0; i < check; i++) {
-        if (strcmp(cn, cols[i].name) == 0) { found[i] = true; break; }
+        if (strcmp(cn, cols[i].name) == 0) {
+          found[i] = true;
+          break;
+        }
       }
     }
     sqlite3_finalize(stmt);
   }
 
   for (int i = 0; i < check; i++) {
-    if (found[i]) continue;
+    if (found[i])
+      continue;
     char sql[128];
-    snprintf(sql, sizeof(sql), "ALTER TABLE %s ADD COLUMN %s %s",
-             table, cols[i].name, cols[i].definition);
+    snprintf(sql, sizeof(sql), "ALTER TABLE %s ADD COLUMN %s %s", table,
+             cols[i].name, cols[i].definition);
     char *err = nullptr;
     int rc = sqlite3_exec(db, sql, nullptr, nullptr, &err);
     if (rc == SQLITE_OK) {
@@ -69,13 +74,13 @@ static void migrateTable(sqlite3 *db, const char *table,
       // must not block boot — log and move on.
       const char *msg = err ? err : sqlite3_errmsg(db);
       if (strstr(msg, "duplicate column") != nullptr) {
-        Serial.printf("[DB] %s.%s already exists (harmless)\n",
-                      table, cols[i].name);
+        // column already present — silent
       } else {
-        Serial.printf("[DB] WARN: %s + %s failed: %s — skipping\n",
-                      table, cols[i].name, msg);
+        Serial.printf("[DB] WARN: %s + %s failed: %s — skipping\n", table,
+                      cols[i].name, msg);
       }
-      if (err) sqlite3_free(err);
+      if (err)
+        sqlite3_free(err);
     }
   }
 }
@@ -122,40 +127,37 @@ bool DBManager::init() {
   //     ALTERs.  Old databases get only the missing columns added.
   //     ALTER failures are non-fatal; see migrateTable() for details.
   static const ColDef samplesCols[] = {
-    {"timestamp",         "INTEGER NOT NULL DEFAULT 0"},
-    {"raw_adc",           "INTEGER DEFAULT 0"},
-    {"temp_c",            "REAL DEFAULT 0"},
-    {"theta",             "REAL DEFAULT 0"},
-    {"theta_fc",          "REAL DEFAULT 0"},
-    {"theta_refill",      "REAL DEFAULT 0"},
-    {"psi_kpa",           "REAL DEFAULT 0"},
-    {"aw_mm",             "REAL DEFAULT 0"},
-    {"fraction_depleted", "REAL DEFAULT 0"},
-    {"drying_rate",       "REAL DEFAULT 0"},
-    {"regime",            "TEXT DEFAULT ''"},
-    {"status",            "TEXT DEFAULT ''"},
-    {"urgency",           "TEXT DEFAULT ''"},
-    {"confidence",        "REAL DEFAULT 0"},
-    {"qc_valid",          "INTEGER DEFAULT 0"},
-    {"seq",               "INTEGER DEFAULT 0"},
-    {"air_temp_c",        "REAL DEFAULT -1"},
-    {"humidity",          "REAL DEFAULT -1"},
-    {"raw_adc_2",         "INTEGER DEFAULT -1"},
-    {"theta_2",           "REAL DEFAULT -1"},
-    {"device_id",         "TEXT DEFAULT 'HUB_ONBOARD'"},
-    {"battery_pct",       "INTEGER DEFAULT -1"},
+      {"timestamp", "INTEGER NOT NULL DEFAULT 0"},
+      {"raw_adc", "INTEGER DEFAULT 0"},
+      {"temp_c", "REAL DEFAULT 0"},
+      {"theta", "REAL DEFAULT 0"},
+      {"theta_fc", "REAL DEFAULT 0"},
+      {"theta_refill", "REAL DEFAULT 0"},
+      {"psi_kpa", "REAL DEFAULT 0"},
+      {"aw_mm", "REAL DEFAULT 0"},
+      {"fraction_depleted", "REAL DEFAULT 0"},
+      {"drying_rate", "REAL DEFAULT 0"},
+      {"regime", "TEXT DEFAULT ''"},
+      {"status", "TEXT DEFAULT ''"},
+      {"urgency", "TEXT DEFAULT ''"},
+      {"confidence", "REAL DEFAULT 0"},
+      {"qc_valid", "INTEGER DEFAULT 0"},
+      {"seq", "INTEGER DEFAULT 0"},
+      {"air_temp_c", "REAL DEFAULT -1"},
+      {"humidity", "REAL DEFAULT -1"},
+      {"raw_adc_2", "INTEGER DEFAULT -1"},
+      {"theta_2", "REAL DEFAULT -1"},
+      {"device_id", "TEXT DEFAULT 'HUB_ONBOARD'"},
+      {"battery_pct", "INTEGER DEFAULT -1"},
   };
   migrateTable(db, "samples", samplesCols,
                sizeof(samplesCols) / sizeof(samplesCols[0]));
 
   static const ColDef calibCols[] = {
-    {"timestamp",    "INTEGER DEFAULT 0"},
-    {"state",        "TEXT DEFAULT ''"},
-    {"theta_fc",     "REAL DEFAULT 0"},
-    {"theta_refill", "REAL DEFAULT 0"},
-    {"n_events",     "INTEGER DEFAULT 0"},
-    {"confidence",   "REAL DEFAULT 0"},
-    {"params_json",  "TEXT DEFAULT ''"},
+      {"timestamp", "INTEGER DEFAULT 0"}, {"state", "TEXT DEFAULT ''"},
+      {"theta_fc", "REAL DEFAULT 0"},     {"theta_refill", "REAL DEFAULT 0"},
+      {"n_events", "INTEGER DEFAULT 0"},  {"confidence", "REAL DEFAULT 0"},
+      {"params_json", "TEXT DEFAULT ''"},
   };
   migrateTable(db, "calibration", calibCols,
                sizeof(calibCols) / sizeof(calibCols[0]));
@@ -172,7 +174,8 @@ bool DBManager::prepareStatements() {
       "psi_kpa, aw_mm, fraction_depleted, drying_rate, regime, "
       "status, urgency, confidence, qc_valid, seq, air_temp_c, humidity, "
       "raw_adc_2, theta_2, device_id, battery_pct) "
-      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+      "?)";
 
   int rc = sqlite3_prepare_v2(db, sql, -1, &insertStmt, nullptr);
   if (rc != SQLITE_OK) {
@@ -215,7 +218,8 @@ bool DBManager::writeSampleBatch(std::vector<SampleData> &samples) {
     sqlite3_bind_double(insertStmt, 18, s.humidity);
     sqlite3_bind_int(insertStmt, 19, s.raw_adc_2);
     sqlite3_bind_double(insertStmt, 20, s.theta_2);
-    sqlite3_bind_text(insertStmt, 21, s.device_id.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(insertStmt, 21, s.device_id.c_str(), -1,
+                      SQLITE_TRANSIENT);
     sqlite3_bind_int(insertStmt, 22, s.battery_pct);
 
     if (sqlite3_step(insertStmt) != SQLITE_DONE) {
@@ -278,29 +282,29 @@ std::vector<SampleData> DBManager::getRecentSamples(int n) {
     sqlite3_bind_int(stmt, 1, n);
     while (sqlite3_step(stmt) == SQLITE_ROW) {
       SampleData s = {};
-      s.id                 = sqlite3_column_int(stmt, 0);
-      s.timestamp          = sqlite3_column_int64(stmt, 1);
-      s.raw_adc            = sqlite3_column_int(stmt, 2);
-      s.temp_c             = sqlite3_column_double(stmt, 3);
-      s.theta              = sqlite3_column_double(stmt, 4);
-      s.theta_fc           = sqlite3_column_double(stmt, 5);
-      s.theta_refill       = sqlite3_column_double(stmt, 6);
-      s.psi_kpa            = sqlite3_column_double(stmt, 7);
-      s.aw_mm              = sqlite3_column_double(stmt, 8);
-      s.fraction_depleted  = sqlite3_column_double(stmt, 9);
-      s.drying_rate        = sqlite3_column_double(stmt, 10);
-      s.regime   = String((const char *)sqlite3_column_text(stmt, 11));
-      s.status   = String((const char *)sqlite3_column_text(stmt, 12));
-      s.urgency  = String((const char *)sqlite3_column_text(stmt, 13));
-      s.confidence         = sqlite3_column_double(stmt, 14);
-      s.qc_valid           = sqlite3_column_int(stmt, 15) != 0;
-      s.seq                = sqlite3_column_int(stmt, 16);
-      s.air_temp_c         = sqlite3_column_double(stmt, 17);
-      s.humidity           = sqlite3_column_double(stmt, 18);
-      s.raw_adc_2          = sqlite3_column_int(stmt, 19);
-      s.theta_2            = sqlite3_column_double(stmt, 20);
-      s.device_id          = String((const char *)sqlite3_column_text(stmt, 21));
-      s.battery_pct        = sqlite3_column_int(stmt, 22);
+      s.id = sqlite3_column_int(stmt, 0);
+      s.timestamp = sqlite3_column_int64(stmt, 1);
+      s.raw_adc = sqlite3_column_int(stmt, 2);
+      s.temp_c = sqlite3_column_double(stmt, 3);
+      s.theta = sqlite3_column_double(stmt, 4);
+      s.theta_fc = sqlite3_column_double(stmt, 5);
+      s.theta_refill = sqlite3_column_double(stmt, 6);
+      s.psi_kpa = sqlite3_column_double(stmt, 7);
+      s.aw_mm = sqlite3_column_double(stmt, 8);
+      s.fraction_depleted = sqlite3_column_double(stmt, 9);
+      s.drying_rate = sqlite3_column_double(stmt, 10);
+      s.regime = String((const char *)sqlite3_column_text(stmt, 11));
+      s.status = String((const char *)sqlite3_column_text(stmt, 12));
+      s.urgency = String((const char *)sqlite3_column_text(stmt, 13));
+      s.confidence = sqlite3_column_double(stmt, 14);
+      s.qc_valid = sqlite3_column_int(stmt, 15) != 0;
+      s.seq = sqlite3_column_int(stmt, 16);
+      s.air_temp_c = sqlite3_column_double(stmt, 17);
+      s.humidity = sqlite3_column_double(stmt, 18);
+      s.raw_adc_2 = sqlite3_column_int(stmt, 19);
+      s.theta_2 = sqlite3_column_double(stmt, 20);
+      s.device_id = String((const char *)sqlite3_column_text(stmt, 21));
+      s.battery_pct = sqlite3_column_int(stmt, 22);
       res.push_back(s);
     }
   }
@@ -343,36 +347,37 @@ SampleData DBManager::getLatestSampleForDevice(const String &deviceId) {
   if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
     sqlite3_bind_text(stmt, 1, deviceId.c_str(), -1, SQLITE_TRANSIENT);
     if (sqlite3_step(stmt) == SQLITE_ROW) {
-      s.id                = sqlite3_column_int(stmt, 0);
-      s.timestamp         = sqlite3_column_int64(stmt, 1);
-      s.raw_adc           = sqlite3_column_int(stmt, 2);
-      s.temp_c            = sqlite3_column_double(stmt, 3);
-      s.theta             = sqlite3_column_double(stmt, 4);
-      s.theta_fc          = sqlite3_column_double(stmt, 5);
-      s.theta_refill      = sqlite3_column_double(stmt, 6);
-      s.psi_kpa           = sqlite3_column_double(stmt, 7);
-      s.aw_mm             = sqlite3_column_double(stmt, 8);
+      s.id = sqlite3_column_int(stmt, 0);
+      s.timestamp = sqlite3_column_int64(stmt, 1);
+      s.raw_adc = sqlite3_column_int(stmt, 2);
+      s.temp_c = sqlite3_column_double(stmt, 3);
+      s.theta = sqlite3_column_double(stmt, 4);
+      s.theta_fc = sqlite3_column_double(stmt, 5);
+      s.theta_refill = sqlite3_column_double(stmt, 6);
+      s.psi_kpa = sqlite3_column_double(stmt, 7);
+      s.aw_mm = sqlite3_column_double(stmt, 8);
       s.fraction_depleted = sqlite3_column_double(stmt, 9);
-      s.drying_rate       = sqlite3_column_double(stmt, 10);
-      s.regime    = String((const char *)sqlite3_column_text(stmt, 11));
-      s.status    = String((const char *)sqlite3_column_text(stmt, 12));
-      s.urgency   = String((const char *)sqlite3_column_text(stmt, 13));
-      s.confidence        = sqlite3_column_double(stmt, 14);
-      s.qc_valid          = sqlite3_column_int(stmt, 15) != 0;
-      s.seq               = sqlite3_column_int(stmt, 16);
-      s.air_temp_c        = sqlite3_column_double(stmt, 17);
-      s.humidity          = sqlite3_column_double(stmt, 18);
-      s.raw_adc_2         = sqlite3_column_int(stmt, 19);
-      s.theta_2           = sqlite3_column_double(stmt, 20);
-      s.device_id         = String((const char *)sqlite3_column_text(stmt, 21));
-      s.battery_pct       = sqlite3_column_int(stmt, 22);
+      s.drying_rate = sqlite3_column_double(stmt, 10);
+      s.regime = String((const char *)sqlite3_column_text(stmt, 11));
+      s.status = String((const char *)sqlite3_column_text(stmt, 12));
+      s.urgency = String((const char *)sqlite3_column_text(stmt, 13));
+      s.confidence = sqlite3_column_double(stmt, 14);
+      s.qc_valid = sqlite3_column_int(stmt, 15) != 0;
+      s.seq = sqlite3_column_int(stmt, 16);
+      s.air_temp_c = sqlite3_column_double(stmt, 17);
+      s.humidity = sqlite3_column_double(stmt, 18);
+      s.raw_adc_2 = sqlite3_column_int(stmt, 19);
+      s.theta_2 = sqlite3_column_double(stmt, 20);
+      s.device_id = String((const char *)sqlite3_column_text(stmt, 21));
+      s.battery_pct = sqlite3_column_int(stmt, 22);
     }
   }
   sqlite3_finalize(stmt);
   return s;
 }
 
-std::vector<SampleData> DBManager::getRecentSamples(int n, const String &deviceId) {
+std::vector<SampleData> DBManager::getRecentSamples(int n,
+                                                    const String &deviceId) {
   std::vector<SampleData> res;
   sqlite3_stmt *stmt;
   const char *sql =
@@ -387,29 +392,29 @@ std::vector<SampleData> DBManager::getRecentSamples(int n, const String &deviceI
     sqlite3_bind_int(stmt, 2, n);
     while (sqlite3_step(stmt) == SQLITE_ROW) {
       SampleData s = {};
-      s.id                 = sqlite3_column_int(stmt, 0);
-      s.timestamp          = sqlite3_column_int64(stmt, 1);
-      s.raw_adc            = sqlite3_column_int(stmt, 2);
-      s.temp_c             = sqlite3_column_double(stmt, 3);
-      s.theta              = sqlite3_column_double(stmt, 4);
-      s.theta_fc           = sqlite3_column_double(stmt, 5);
-      s.theta_refill       = sqlite3_column_double(stmt, 6);
-      s.psi_kpa            = sqlite3_column_double(stmt, 7);
-      s.aw_mm              = sqlite3_column_double(stmt, 8);
-      s.fraction_depleted  = sqlite3_column_double(stmt, 9);
-      s.drying_rate        = sqlite3_column_double(stmt, 10);
-      s.regime   = String((const char *)sqlite3_column_text(stmt, 11));
-      s.status   = String((const char *)sqlite3_column_text(stmt, 12));
-      s.urgency  = String((const char *)sqlite3_column_text(stmt, 13));
-      s.confidence         = sqlite3_column_double(stmt, 14);
-      s.qc_valid           = sqlite3_column_int(stmt, 15) != 0;
-      s.seq                = sqlite3_column_int(stmt, 16);
-      s.air_temp_c         = sqlite3_column_double(stmt, 17);
-      s.humidity           = sqlite3_column_double(stmt, 18);
-      s.raw_adc_2          = sqlite3_column_int(stmt, 19);
-      s.theta_2            = sqlite3_column_double(stmt, 20);
-      s.device_id          = String((const char *)sqlite3_column_text(stmt, 21));
-      s.battery_pct        = sqlite3_column_int(stmt, 22);
+      s.id = sqlite3_column_int(stmt, 0);
+      s.timestamp = sqlite3_column_int64(stmt, 1);
+      s.raw_adc = sqlite3_column_int(stmt, 2);
+      s.temp_c = sqlite3_column_double(stmt, 3);
+      s.theta = sqlite3_column_double(stmt, 4);
+      s.theta_fc = sqlite3_column_double(stmt, 5);
+      s.theta_refill = sqlite3_column_double(stmt, 6);
+      s.psi_kpa = sqlite3_column_double(stmt, 7);
+      s.aw_mm = sqlite3_column_double(stmt, 8);
+      s.fraction_depleted = sqlite3_column_double(stmt, 9);
+      s.drying_rate = sqlite3_column_double(stmt, 10);
+      s.regime = String((const char *)sqlite3_column_text(stmt, 11));
+      s.status = String((const char *)sqlite3_column_text(stmt, 12));
+      s.urgency = String((const char *)sqlite3_column_text(stmt, 13));
+      s.confidence = sqlite3_column_double(stmt, 14);
+      s.qc_valid = sqlite3_column_int(stmt, 15) != 0;
+      s.seq = sqlite3_column_int(stmt, 16);
+      s.air_temp_c = sqlite3_column_double(stmt, 17);
+      s.humidity = sqlite3_column_double(stmt, 18);
+      s.raw_adc_2 = sqlite3_column_int(stmt, 19);
+      s.theta_2 = sqlite3_column_double(stmt, 20);
+      s.device_id = String((const char *)sqlite3_column_text(stmt, 21));
+      s.battery_pct = sqlite3_column_int(stmt, 22);
       res.push_back(s);
     }
   }
