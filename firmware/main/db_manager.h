@@ -55,6 +55,7 @@ public:
 
   // Maintenance
   bool cleanOldData(int daysToKeep);
+  int deduplicateRows();
 
 private:
   sqlite3 *db;

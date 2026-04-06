@@ -1,39 +1,44 @@
-#include <Arduino.h>
 #include <OneWire.h>
-#include <DS18B20.h>
 
+// On the XIAO, it's often safer to use the D-designation 
+// instead of the integer 3.
 #define TEMP_PIN 3
 
-OneWire oneWire(TEMP_PIN);
-DS18B20 tempSensor(&oneWire);
+OneWire ds(TEMP_PIN);
 
 void setup() {
   Serial.begin(115200);
-  delay(3000);
-  Serial.println("[TEST] DS18B20 only — GPIO 3");
-
-  if (tempSensor.begin()) {
-    Serial.println("[TEST] DS18B20 found");
-  } else {
-    Serial.println("[TEST] DS18B20 NOT found — check wiring");
-  }
+  delay(3000); // Wait for native USB serial
+  Serial.println("--- 1-Wire Scanner Starting ---");
 }
 
 void loop() {
-  if (tempSensor.begin()) {
-    tempSensor.requestTemperatures();
-    unsigned long start = millis();
-    while (!tempSensor.isConversionComplete()) {
-      if (millis() - start > 2000) {
-        Serial.println("[TEST] Conversion timeout");
-        break;
-      }
-    }
-    float t = tempSensor.getTempC();
-    Serial.printf("[TEMP] %.2f °C\n", t);
-  } else {
-    Serial.println("[TEMP] Sensor not detected");
+  byte i;
+  byte addr[8];
+
+  Serial.println("Scanning 1-Wire bus...");
+
+  if (!ds.search(addr)) {
+    Serial.println("No more addresses. Resetting search.");
+    Serial.println("-------------------------");
+    ds.reset_search();
+    delay(2000);
+    return;
   }
 
-  delay(2000);
+  Serial.print("ROM =");
+  for (i = 0; i < 8; i++) {
+    Serial.write(' ');
+    Serial.print(addr[i], HEX);
+  }
+  Serial.println();
+
+  // The first byte of a DS18B20 should be 0x28
+  if (addr[0] == 0x28) {
+    Serial.println("Found a DS18B20 sensor!");
+  } else {
+    Serial.println("Device is not a DS18B20 family device.");
+  }
+  
+  delay(1000);
 }

@@ -338,6 +338,15 @@ const App = {
     init: async function () {
         Logger.log('UI', 'Initializing AgriScan App...');
 
+        // Sync browser time to ESP32 (fire-and-forget)
+        try {
+            fetch('/api/set_time', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ epoch: Math.floor(Date.now() / 1000) })
+            }).catch(() => {});
+        } catch (e) {}
+
         // Initialize I18n
         if (typeof I18n !== 'undefined') {
             I18n.init();

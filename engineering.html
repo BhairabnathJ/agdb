@@ -251,6 +251,7 @@
       <span id="connStatus">CONNECTING</span>
     </span>
     <span>Last updated: <span id="lastUpdated" style="color:#e6edf3;">--:--:--</span></span>
+    <span id="reconnectMsg" style="color:#f59e0b;font-size:0.85em;margin-left:8px;"></span>
     <span style="color:#58a6ff;font-weight:600;letter-spacing:0.04em;">Engineering Telemetry</span>
     <div class="nav">
       <a href="/">Dashboard</a>
@@ -683,12 +684,18 @@
     }
 
     // ── Main fetch loop ───────────────────────────────────────────────────────
+    let backoffMs = 2000;
+    const BACKOFF_MIN = 2000;
+    const BACKOFF_MAX = 30000;
+
     async function fetchData() {
       try {
         const res = await fetch('/api/current');
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         setConnected(true);
+        backoffMs = BACKOFF_MIN;
+        document.getElementById('reconnectMsg').textContent = '';
         document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
         updateCards(data);
         pushPoint(data);
@@ -696,7 +703,11 @@
         updateTable(data);
       } catch (e) {
         setConnected(false);
+        backoffMs = Math.min(backoffMs * 2, BACKOFF_MAX);
+        document.getElementById('reconnectMsg').textContent =
+          'Reconnecting in ' + (backoffMs / 1000) + 's\u2026';
       }
+      setTimeout(fetchData, backoffMs);
     }
 
     // ── Boot ──────────────────────────────────────────────────────────────────
@@ -727,11 +738,9 @@
         chartTheta.update();
         chartEnv.update();
         fetchData();
-        setInterval(fetchData, 2000);
       })
       .catch(() => {
         fetchData();
-        setInterval(fetchData, 2000);
       });
   </script>
 </body>

@@ -112,6 +112,7 @@ bool DBManager::init() {
       "raw_adc_2 INTEGER DEFAULT -1, theta_2 REAL DEFAULT -1, "
       "device_id TEXT DEFAULT 'HUB_ONBOARD', battery_pct INTEGER DEFAULT -1);"
       "CREATE INDEX IF NOT EXISTS idx_timestamp ON samples(timestamp);"
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_sample ON samples(device_id, timestamp, seq);"
       "CREATE TABLE IF NOT EXISTS calibration ("
       "version INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER, state "
       "TEXT, "
@@ -169,7 +170,7 @@ bool DBManager::init() {
 bool DBManager::prepareStatements() {
   // Explicitly list columns — id is excluded, SQLite fills it automatically
   const char *sql =
-      "INSERT INTO samples "
+      "INSERT OR REPLACE INTO samples "
       "(timestamp, raw_adc, temp_c, theta, theta_fc, theta_refill, "
       "psi_kpa, aw_mm, fraction_depleted, drying_rate, regime, "
       "status, urgency, confidence, qc_valid, seq, air_temp_c, humidity, "
@@ -457,5 +458,32 @@ bool DBManager::writeCalibration(String state, float fc, float refill,
 }
 
 bool DBManager::cleanOldData(int daysToKeep) {
-  return true; // Stub
+    time_t cutoff = time(nullptr) - ((time_t)daysToKeep * 86400);
+    char sql[128];
+    snprintf(sql, sizeof(sql), "DELETE FROM samples WHERE timestamp < %ld", (long)cutoff);
+    if (!executeSQL(sql)) return false;
+    executeSQL("PRAGMA wal_checkpoint(TRUNCATE);");
+    return true;
+}
+
+int DBManager::deduplicateRows() {
+    if (!db) return -1;
+    // Count duplicates first
+    const char *countSQL = "SELECT COUNT(*) FROM samples WHERE id NOT IN "
+                           "(SELECT MIN(id) FROM samples GROUP BY device_id, timestamp, seq)";
+    sqlite3_stmt *stmt;
+    int count = 0;
+    if (sqlite3_prepare_v2(db, countSQL, -1, &stmt, nullptr) == SQLITE_OK) {
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            count = sqlite3_column_int(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+    }
+    if (count == 0) return 0;
+
+    const char *deleteSQL = "DELETE FROM samples WHERE id NOT IN "
+                            "(SELECT MIN(id) FROM samples GROUP BY device_id, timestamp, seq)";
+    if (!executeSQL(deleteSQL)) return -1;
+    Serial.printf("[DB] Deduplicated: removed %d duplicate rows\n", count);
+    return count;
 }

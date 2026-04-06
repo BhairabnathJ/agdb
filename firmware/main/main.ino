@@ -237,6 +237,7 @@ void saveCalibration(const String &deviceMac) {
   cal["n_events"] = calState.n_events;
   cal["n_fc_updates"] = calState.n_fc_updates;
   cal["confidence"] = calState.confidence;
+  cal["state"] = (int)calState.state;
 
   File f = SD.open(path, FILE_WRITE);
   if (f) {
@@ -279,7 +280,8 @@ void loadCalibration(const String &deviceMac) {
   JsonObject cal = doc["autoCalibration"];
   if (!cal.isNull()) {
     eng->restoreCalibrationState(
-      { .theta_fc_star = cal["theta_fc_star"] | activeCrop.theta_fc,
+      { .state = (CalibrationState)(cal["state"] | (int)CAL_INIT),
+        .theta_fc_star = cal["theta_fc_star"] | activeCrop.theta_fc,
         .theta_refill_star =
           cal["theta_refill_star"] | activeCrop.theta_refill,
         .confidence = cal["confidence"] | 0.0f,
@@ -366,7 +368,10 @@ SensorReading runPhysicsForDevice(int raw_adc, float temp_c, time_t ts,
   SensorReading reading = eng->processSensorReading(raw_adc, temp_c, ts);
   Serial.printf("[ESPNOW] Device %s theta=%.3f status=%s\n", deviceId.c_str(),
                 reading.theta, reading.status);
-  saveCalibration(deviceId);
+  if (millis() - lastCalSaveMillis > CAL_SAVE_INTERVAL_MS) {
+      saveCalibration(deviceId);
+      lastCalSaveMillis = millis();
+  }
   return reading;
 }
 
@@ -547,6 +552,18 @@ void setup() {
 
   // WiFi AP
   WiFi.softAP("AgriScan_Connect", "agri1234");
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+      switch (event) {
+          case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
+              Serial.println("[WIFI] Client connected");
+              break;
+          case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
+              Serial.println("[WIFI] Client disconnected");
+              break;
+          default:
+              break;
+      }
+  });
   // Issue 7: initialize ESP-NOW after WiFi
   initEspNow();
   Serial.println("[BOOT] WiFi: AgriScan_Connect | http://192.168.4.1");
@@ -759,6 +776,16 @@ void setup() {
     json += "\"crop\":\"" + activeCrop.crop_key + "\",";
     json += "\"soil\":\"" + activeCrop.soil_key + "\",";
     json += "\"paired_devices\":" + String(deviceEngines.size());
+    json += ",\"calibration\":{";
+    auto cs = Physics.getCalibrationState();
+    const char* stateNames[] = {"INIT","BASELINE_MONITORING","WETTING_EVENT","DRAINAGE_TRACKING","FC_ESTIMATE","DRYDOWN_FIT","NORMAL_OPERATION"};
+    int si = (int)cs.state;
+    json += "\"status\":\"" + String((si >= 0 && si <= 6) ? stateNames[si] : "UNKNOWN") + "\",";
+    json += "\"events_captured\":" + String(cs.n_events) + ",";
+    json += "\"confidence\":" + String(cs.confidence, 3) + ",";
+    json += "\"theta_fc_star\":" + String(cs.theta_fc_star, 4) + ",";
+    json += "\"n_fc_updates\":" + String(cs.n_fc_updates);
+    json += "}";
     json += "}";
     req->send(200, "application/json", json);
   });
@@ -795,6 +822,22 @@ void setup() {
     }
     req->send(200, "application/json", "{\"success\":true}");
   });
+
+  server.on("/api/set_time", HTTP_POST, [](AsyncWebServerRequest *req){}, NULL,
+      [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t index, size_t total) {
+          DynamicJsonDocument doc(256);
+          if (!deserializeJson(doc, data, len)) {
+              time_t epoch = doc["epoch"] | (time_t)0;
+              if (epoch > 1000000) {
+                  struct timeval tv = { .tv_sec = epoch, .tv_usec = 0 };
+                  settimeofday(&tv, nullptr);
+                  Serial.printf("[TIME] Clock set to %ld via browser\n", (long)epoch);
+                  req->send(200, "application/json", "{\"ok\":true}");
+                  return;
+              }
+          }
+          req->send(400, "application/json", "{\"error\":\"invalid epoch\"}");
+      });
 
   server.onNotFound(
     [](AsyncWebServerRequest *req) {
@@ -894,7 +937,12 @@ void loop() {
         Serial.println("[DB] Batch flushed");
       }
 
-      if (s1Valid) saveCalibration("HUB_ONBOARD");
+      if (s1Valid) {
+        if (millis() - lastCalSaveMillis > CAL_SAVE_INTERVAL_MS) {
+            saveCalibration("HUB_ONBOARD");
+            lastCalSaveMillis = millis();
+        }
+      }
     }
   }
 }

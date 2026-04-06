@@ -373,11 +373,20 @@
             document.getElementById('sys-last-reading').textContent = `${diag.system.last_reading_seconds_ago} seconds ago`;
 
             // Calibration
-            document.getElementById('cal-status').textContent = diag.calibration.status;
-            document.getElementById('cal-events').textContent = `${diag.calibration.events_captured} of 8`;
-            const confPct = Math.round(diag.calibration.confidence * 100);
-            document.getElementById('cal-confidence').textContent = `${confPct}%`;
-            document.getElementById('cal-progress').style.width = `${confPct}%`;
+            if (diag.calibration) {
+                document.getElementById('cal-status').textContent = diag.calibration.status || 'N/A';
+                document.getElementById('cal-events').textContent =
+                    diag.calibration.events_captured != null ? `${diag.calibration.events_captured} of 8` : 'N/A';
+                const confPct = diag.calibration.confidence != null ? Math.round(diag.calibration.confidence * 100) : 0;
+                document.getElementById('cal-confidence').textContent =
+                    diag.calibration.confidence != null ? `${confPct}%` : 'N/A';
+                document.getElementById('cal-progress').style.width = `${confPct}%`;
+            } else {
+                document.getElementById('cal-status').textContent = 'N/A';
+                document.getElementById('cal-events').textContent = 'N/A';
+                document.getElementById('cal-confidence').textContent = 'N/A';
+                document.getElementById('cal-progress').style.width = '0%';
+            }
 
             // Errors
             const errorEl = document.getElementById('error-count');
