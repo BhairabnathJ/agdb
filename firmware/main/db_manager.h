@@ -29,6 +29,7 @@ struct SampleData {
   int seq;
   String device_id = "HUB_ONBOARD";
   int battery_pct = -1;
+  float batt_voltage = -1.0f;
 };
 
 class DBManager {
@@ -61,6 +62,7 @@ private:
   sqlite3 *db;
   const char *dbPath;
   sqlite3_stmt *insertStmt;
+  bool hasBattVoltage;  // false if batt_voltage column could not be added
 
   bool executeSQL(const char *sql);
   bool prepareStatements();

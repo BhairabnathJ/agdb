@@ -392,6 +392,25 @@
         label: 'Confidence',
         fmt: v => (v * 100).toFixed(0),
         unit: '%'
+      },
+      {
+        key: 'sample_age_s',
+        label: 'Sample Age',
+        fmt: v => Math.round(v),
+        unit: 's'
+      },
+      {
+        key: 'batt_voltage',
+        label: 'Battery Voltage',
+        fmt: v => v <= -0.5 ? '--' : v.toFixed(2),
+        unit: 'V'
+      },
+      {
+        key: 'batt_pct',
+        label: 'Battery',
+        fmt: v => v < 0 ? '--' : Math.round(v),
+        unit: '%',
+        bg: v => v < 0 ? '#161b22' : v < 20 ? '#3a0000' : v < 50 ? '#3a2e00' : '#1a3a1a'
       }
     ];
 
@@ -714,16 +733,24 @@
     buildCards();
     initCharts();
 
-    // Load history on boot
-    fetch('/api/series?limit=200')
+    // Sync ESP32 RTC to browser clock before anything else.
+    // The ESP32 has no battery-backed RTC — time() returns 0 after every
+    // power cycle, causing all DB timestamps to be fake sequential integers.
+    // Posting here ensures history queries and new readings use real wall time.
+    fetch('/api/set_time', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ epoch: Math.floor(Date.now() / 1000) })
+    }).catch(() => {}).then(() => {
+
+    // Load history on boot (last 24 hours, real timestamps)
+    const _histTo   = Math.floor(Date.now() / 1000);
+    const _histFrom = _histTo - 86400;
+    fetch(`/api/series?from=${_histFrom}&to=${_histTo}`)
       .then(r => r.json())
       .then(series => {
-        const now = Date.now();
-        const interval = 2000;
-        const startTime = now - (series.length * interval);
-
-        series.forEach((pt, i) => {
-          const label = new Date(startTime + (i * interval)).toLocaleTimeString();
+        series.forEach(pt => {
+          const label = new Date(pt.timestamp * 1000).toLocaleTimeString();
           labels.push(label);
           thetaData.push((pt.theta != null && pt.theta >= 0) ? pt.theta : null);
           thetaData2.push((pt.raw_adc_2 > 0 && pt.theta_2 != null && pt.theta_2 >= 0) ? pt.theta_2 : null);
@@ -742,6 +769,8 @@
       .catch(() => {
         fetchData();
       });
+
+    }); // end set_time .then()
   </script>
 </body>
 

@@ -18,6 +18,8 @@
 #include <SD.h>
 #include <WiFi.h>
 #include <esp_now.h>  // Issue 7: ESP-NOW for CropBand pairing
+#include <esp_sleep.h>
+#include <esp_wifi.h>
 #include <map>        // Issue 7: per-device physics instances
 
 // =============================================================================
@@ -52,24 +54,31 @@ static SensorReading lastReading = {};
 static SampleData lastCachedSample = {};
 static float lastAirTemp = -1.0f;
 static float lastHumidity = -1.0f;
+static unsigned long lastLoopMillis = 0; // millis() at start of last loop run
 
 // Sensor 2 calibration instance (ADC → VWC conversion only, independent sensor)
 static SensorCalibration sensor2Cal;
 
 // Issue 7: ESP-NOW CropBand packet format
+// WARNING: must match CropBand firmware byte-for-byte (packed struct, same field order)
 typedef struct __attribute__((packed)) {
-  uint8_t version;      // must be 1
-  uint16_t raw_adc;     // soil moisture ADC 0-4095, or 0xFFFF if sensor absent
-  float temp_c;         // DS18B20 temp in Celsius, or -1.0 if unavailable
-  float humidity;       // DHT22 humidity %, or -1.0 if unavailable
-  float air_temp_c;     // DHT22 air temp in Celsius, or -1.0 if unavailable
-  uint8_t battery_pct;  // 0-100, or 255 if unknown
+  uint8_t  version;     // must be 1
+  uint16_t raw_adc;     // soil sensor 1 (shallow) ADC 0-4095, or 0xFFFF if absent
+  uint16_t raw_adc_2;   // soil sensor 2 (deep) ADC 0-4095, or 0xFFFF if absent
+  float    temp_c;      // DS18B20 temp in Celsius, or -1.0 if unavailable
+  float    humidity;    // DHT22 humidity %, or -1.0 if unavailable
+  float    air_temp_c;  // DHT22 air temp in Celsius, or -1.0 if unavailable
+  uint8_t  battery_pct; // 0-100, or 255 if unknown
   uint32_t timestamp;   // Unix timestamp or 0 if no RTC
-  uint8_t crc8;         // CRC8 over all preceding bytes
+  uint8_t  crc8;        // CRC8 over all preceding bytes (sizeof-1)
 } CropBandPacket;
 
 // Issue 7: per-device physics instances
 std::map<String, PhysicsEngine *> deviceEngines;
+
+// Calibration save throttle
+#define CAL_SAVE_INTERVAL_MS 60000UL
+static unsigned long lastCalSaveMillis = 0;
 
 // =============================================================================
 // CROP CONFIG
@@ -89,6 +98,27 @@ struct CropConfig {
 };
 
 CropConfig activeCrop;
+
+// =============================================================================
+// BATTERY MONITORING
+// =============================================================================
+
+// Voltage divider: 4.7kΩ + 2kΩ, tapped before MT3608 boost converter.
+// GPIO 32 (ADC1 — safe with WiFi active).
+// Multiplier 3.35 recovers real cell voltage from the attenuated ADC reading.
+float readBatteryVoltage() {
+  int raw = analogRead(32);
+  float vpin = (raw / 4095.0f) * 3.3f;
+  return vpin * 3.35f;
+}
+
+// Maps 3.0V (empty) to 4.2V (full) onto 0–100%, clamped.
+int getBatteryPercent(float voltage) {
+  float pct = (voltage - 3.0f) / (4.2f - 3.0f) * 100.0f;
+  if (pct < 0) pct = 0;
+  if (pct > 100) pct = 100;
+  return (int)pct;
+}
 
 // =============================================================================
 // THRESHOLD LOADING
@@ -412,16 +442,18 @@ void onEspNowReceive(const esp_now_recv_info *recv_info, const uint8_t *data,
   int battPct = (pkt.battery_pct == 255) ? -1 : (int)pkt.battery_pct;
 
   if (pkt.raw_adc == 0xFFFF) {
-    // No soil sensor — write a metadata-only row
+    // No soil sensor 1 — write a metadata-only row
     SampleData s;
     s.device_id = macString;
     s.battery_pct = battPct;
     s.timestamp = ts;
     s.raw_adc = -1;
+    s.raw_adc_2 = (pkt.raw_adc_2 == 0xFFFF) ? -1 : (int)pkt.raw_adc_2;
     s.temp_c = pkt.temp_c;
     s.humidity = pkt.humidity;
     s.air_temp_c = pkt.air_temp_c;
     s.theta = -1;
+    s.theta_2 = -1;
     s.theta_fc = -1;
     s.theta_refill = -1;
     s.psi_kpa = -1;
@@ -434,8 +466,6 @@ void onEspNowReceive(const esp_now_recv_info *recv_info, const uint8_t *data,
     s.confidence = 0;
     s.qc_valid = false;
     s.seq = 0;
-    s.theta_2 = -1;
-    s.raw_adc_2 = -1;
     std::vector<SampleData> batch = { s };
     dbManager.writeSampleBatch(batch);
   } else {
@@ -445,6 +475,7 @@ void onEspNowReceive(const esp_now_recv_info *recv_info, const uint8_t *data,
     s.battery_pct = battPct;
     s.timestamp = ts;
     s.raw_adc = pkt.raw_adc;
+    s.raw_adc_2 = (pkt.raw_adc_2 == 0xFFFF) ? -1 : (int)pkt.raw_adc_2;
     s.temp_c = pkt.temp_c;
     s.humidity = pkt.humidity;
     s.air_temp_c = pkt.air_temp_c;
@@ -461,8 +492,7 @@ void onEspNowReceive(const esp_now_recv_info *recv_info, const uint8_t *data,
     s.confidence = reading.confidence;
     s.qc_valid = reading.qc_valid;
     s.seq = 0;
-    s.theta_2 = -1;
-    s.raw_adc_2 = -1;
+    s.theta_2 = -1; // Hub does not compute theta_2 for remote devices
     std::vector<SampleData> batch = { s };
     dbManager.writeSampleBatch(batch);
   }
@@ -552,6 +582,8 @@ void setup() {
 
   // WiFi AP
   WiFi.softAP("AgriScan_Connect", "agri1234");
+  // WIFI_PS_MIN_MODEM is a STA-mode hint and suspends the AP during light
+  // sleep — omitted so the AP stays reachable at all times.
   WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
       switch (event) {
           case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
@@ -594,7 +626,9 @@ void setup() {
       json += "\"urgency\":\"" + s.urgency + "\",";
       json += "\"qc_valid\":" + String(s.qc_valid ? "true" : "false") + ",";
       json += "\"confidence\":" + String(s.confidence, 2) + ",";
-      json += "\"battery_pct\":" + String(s.battery_pct);
+      json += "\"battery_pct\":" + String(s.battery_pct) + ",";
+      json += "\"batt_voltage\":" + String(s.batt_voltage, 2) + ",";
+      json += "\"batt_pct\":" + String(s.battery_pct);
       json += "}";
       req->send(200, "application/json", json);
       return;
@@ -631,23 +665,40 @@ void setup() {
     json += "\"theta_fc\":" + String(activeCrop.theta_fc, 3) + ",";
     json += "\"theta_refill\":" + String(activeCrop.theta_refill, 3) + ",";
     json += "\"stage\":\"" + activeCrop.stage_name + "\",";
-    json += "\"crop\":\"" + activeCrop.crop_key + "\"";
+    json += "\"crop\":\"" + activeCrop.crop_key + "\",";
+    json += "\"batt_voltage\":" + String(s.batt_voltage, 2) + ",";
+    json += "\"batt_pct\":" + String(s.battery_pct) + ",";
+    json += "\"sample_age_s\":" + String((millis() - lastLoopMillis) / 1000);
     json += "}";
     req->send(200, "application/json", json);
   });
 
   server.on("/api/series", HTTP_GET, [](AsyncWebServerRequest *req) {
-    int limit = 144;
-    if (req->hasParam("limit"))
-      limit = req->getParam("limit")->value().toInt();
-    if (limit < 1 || limit > 200)
-      limit = 144;
+    std::vector<SampleData> series;
 
-    String devId = "HUB_ONBOARD";
-    if (req->hasParam("device"))
-      devId = req->getParam("device")->value();
-    auto series = (devId == "HUB_ONBOARD") ? dbManager.getRecentSamples(limit)
-                                           : dbManager.getRecentSamples(limit, devId);
+    if (req->hasParam("from") || req->hasParam("to")) {
+      // Time-range query: both params required
+      if (!req->hasParam("from") || !req->hasParam("to")) {
+        req->send(400, "application/json", "{\"error\":\"both from and to required\"}");
+        return;
+      }
+      time_t from = (time_t)req->getParam("from")->value().toInt();
+      time_t to   = (time_t)req->getParam("to")->value().toInt();
+      series = dbManager.getSamplesInRange(from, to);
+    } else if (req->hasParam("limit")) {
+      // Legacy count-based query
+      int limit = req->getParam("limit")->value().toInt();
+      if (limit < 1 || limit > 200) limit = 144;
+      String devId = "HUB_ONBOARD";
+      if (req->hasParam("device")) devId = req->getParam("device")->value();
+      series = (devId == "HUB_ONBOARD") ? dbManager.getRecentSamples(limit)
+                                        : dbManager.getRecentSamples(limit, devId);
+    } else {
+      // Default: last 24 hours
+      time_t now = time(nullptr);
+      series = dbManager.getSamplesInRange(now - 86400, now);
+    }
+
     String json = "[";
     for (size_t i = 0; i < series.size(); i++) {
       if (i > 0)
@@ -660,7 +711,9 @@ void setup() {
       json += "\"air_temp_c\":" + String(series[i].air_temp_c, 1) + ",";
       json += "\"theta_fc\":" + String(series[i].theta_fc, 3) + ",";
       json += "\"theta_refill\":" + String(series[i].theta_refill, 3) + ",";
-      json += "\"humidity\":" + String(series[i].humidity, 1) + "}";
+      json += "\"humidity\":" + String(series[i].humidity, 1) + ",";
+      json += "\"batt_voltage\":" + String(series[i].batt_voltage, 2) + ",";
+      json += "\"batt_pct\":" + String(series[i].battery_pct) + "}";
     }
     json += "]";
     req->send(200, "application/json", json);
@@ -786,6 +839,8 @@ void setup() {
     json += "\"theta_fc_star\":" + String(cs.theta_fc_star, 4) + ",";
     json += "\"n_fc_updates\":" + String(cs.n_fc_updates);
     json += "}";
+    json += ",\"batt_voltage\":" + String(lastCachedSample.batt_voltage, 2);
+    json += ",\"batt_pct\":" + String(lastCachedSample.battery_pct);
     json += "}";
     req->send(200, "application/json", json);
   });
@@ -853,96 +908,102 @@ void setup() {
 // =============================================================================
 
 void loop() {
-  static unsigned long lastSample = 0;
+  lastLoopMillis = millis();
+  float battV = readBatteryVoltage();
+  int battPct = getBatteryPercent(battV);
+  Serial.printf("[BATT] voltage=%.2fV pct=%d%%\n", battV, battPct);
 
-  if (millis() - lastSample > 2000) {
-    lastSample = millis();
+  int raw = analogRead(SOIL_PIN);
+  int raw2 = analogRead(SOIL_SENSOR_2_PIN);
+  tempSensor.requestTemperatures();
+  float temp = tempSensor.getTempCByIndex(0);
+  if (temp == DEVICE_DISCONNECTED_C)
+    temp = 25.0f;
+  float humidity = dht.readHumidity();
+  if (isnan(humidity))
+    humidity = -1.0f;
+  float air_temp = dht.readTemperature();
+  if (isnan(air_temp))
+    air_temp = -1.0f;
+  Serial.printf("[ENV] soil_temp=%.2f air_temp=%.2f humidity=%.2f\n", temp,
+                air_temp, humidity);
 
-    int raw = analogRead(SOIL_PIN);
-    int raw2 = analogRead(SOIL_SENSOR_2_PIN);
-    tempSensor.requestTemperatures();
-    float temp = tempSensor.getTempCByIndex(0);
-    if (temp == DEVICE_DISCONNECTED_C)
-      temp = 25.0f;
-    float humidity = dht.readHumidity();
-    if (isnan(humidity))
-      humidity = -1.0f;
-    float air_temp = dht.readTemperature();
-    if (isnan(air_temp))
-      air_temp = -1.0f;
-    Serial.printf("[ENV] soil_temp=%.2f air_temp=%.2f humidity=%.2f\n", temp,
-                  air_temp, humidity);
+  time_t ts = time(nullptr);
+  if (ts < 1000000)
+    ts = seqTimestamp++;
 
-    time_t ts = time(nullptr);
-    if (ts < 1000000)
-      ts = seqTimestamp++;
+  // DHT22 is independent — update cache regardless of soil/temp validation
+  if (humidity >= 0) {
+    lastHumidity = humidity;
+    lastAirTemp = air_temp;
+  }
 
-    // DHT22 is independent — update cache regardless of soil/temp validation
-    if (humidity >= 0) {
-      lastHumidity = humidity;
-      lastAirTemp = air_temp;
+  bool s1Valid = validateSensorReading(raw, temp);
+  bool s2Valid = validateSensorReading(raw2, temp);
+
+  if (!s1Valid && !s2Valid) {
+    Serial.println("[QC] Both sensors out of range — skipping");
+  } else {
+    SensorReading reading = {};
+    if (s1Valid) {
+      reading = Physics.processSensorReading(raw, temp, ts);
+      lastReading = reading;
+      Serial.printf("[SENSOR1] raw=%d theta=%.3f status=%s urgency=%s conf=%.2f\n",
+        raw, reading.theta, reading.status, reading.urgency, reading.confidence);
+    } else {
+      Serial.printf("[SENSOR1] raw=%d — QC failed, skipped\n", raw);
     }
 
-    bool s1Valid = validateSensorReading(raw, temp);
-    bool s2Valid = validateSensorReading(raw2, temp);
-
-    if (!s1Valid && !s2Valid) {
-      Serial.println("[QC] Both sensors out of range — skipping");
+    float theta2 = -1.0f;
+    if (s2Valid) {
+      theta2 = sensor2Cal.calibrate(raw2, temp);
+      Serial.printf("[SENSOR2] raw=%d theta=%.3f\n", raw2, theta2);
     } else {
-      SensorReading reading = {};
-      if (s1Valid) {
-        reading = Physics.processSensorReading(raw, temp, ts);
-        lastReading = reading;
-        Serial.printf("[SENSOR1] raw=%d theta=%.3f status=%s urgency=%s conf=%.2f\n",
-          raw, reading.theta, reading.status, reading.urgency, reading.confidence);
-      } else {
-        Serial.printf("[SENSOR1] raw=%d — QC failed, skipped\n", raw);
-      }
+      Serial.printf("[SENSOR2] raw=%d — QC failed, skipped\n", raw2);
+    }
 
-      float theta2 = -1.0f;
-      if (s2Valid) {
-        theta2 = sensor2Cal.calibrate(raw2, temp);
-        Serial.printf("[SENSOR2] raw=%d theta=%.3f\n", raw2, theta2);
-      } else {
-        Serial.printf("[SENSOR2] raw=%d — QC failed, skipped\n", raw2);
-      }
+    SampleData s;
+    s.timestamp = s1Valid ? reading.timestamp : ts;
+    s.raw_adc = s1Valid ? reading.raw_adc : -1;
+    s.raw_adc_2 = s2Valid ? raw2 : -1;
+    s.temp_c = s1Valid ? reading.temp_c : temp;
+    s.humidity = humidity;
+    s.air_temp_c = air_temp;
+    s.theta = s1Valid ? reading.theta : -1.0f;
+    s.theta_2 = theta2;
+    s.theta_fc = s1Valid ? reading.theta_fc : activeCrop.theta_fc;
+    s.theta_refill = s1Valid ? reading.theta_refill : activeCrop.theta_refill;
+    s.psi_kpa = s1Valid ? reading.psi_kPa : -1.0f;
+    s.aw_mm = s1Valid ? reading.AW_mm : -1.0f;
+    s.fraction_depleted = s1Valid ? reading.fractionDepleted : -1.0f;
+    s.drying_rate = s1Valid ? reading.dryingRate_per_hr : -1.0f;
+    s.regime = s1Valid ? String(reading.regime) : "unknown";
+    s.status = s1Valid ? String(reading.status) : "no_soil";
+    s.urgency = s1Valid ? String(reading.urgency) : "none";
+    s.confidence = s1Valid ? reading.confidence : 0.0f;
+    s.qc_valid = s1Valid ? reading.qc_valid : false;
+    s.seq = (int)(seqTimestamp - 1000000);
+    s.battery_pct = battPct;
+    s.batt_voltage = battV;
+    lastCachedSample = s;
 
-      SampleData s;
-      s.timestamp = s1Valid ? reading.timestamp : ts;
-      s.raw_adc = s1Valid ? reading.raw_adc : -1;
-      s.raw_adc_2 = s2Valid ? raw2 : -1;
-      s.temp_c = s1Valid ? reading.temp_c : temp;
-      s.humidity = humidity;
-      s.air_temp_c = air_temp;
-      s.theta = s1Valid ? reading.theta : -1.0f;
-      s.theta_2 = theta2;
-      s.theta_fc = s1Valid ? reading.theta_fc : activeCrop.theta_fc;
-      s.theta_refill = s1Valid ? reading.theta_refill : activeCrop.theta_refill;
-      s.psi_kpa = s1Valid ? reading.psi_kPa : -1.0f;
-      s.aw_mm = s1Valid ? reading.AW_mm : -1.0f;
-      s.fraction_depleted = s1Valid ? reading.fractionDepleted : -1.0f;
-      s.drying_rate = s1Valid ? reading.dryingRate_per_hr : -1.0f;
-      s.regime = s1Valid ? String(reading.regime) : "unknown";
-      s.status = s1Valid ? String(reading.status) : "no_soil";
-      s.urgency = s1Valid ? String(reading.urgency) : "none";
-      s.confidence = s1Valid ? reading.confidence : 0.0f;
-      s.qc_valid = s1Valid ? reading.qc_valid : false;
-      s.seq = (int)(seqTimestamp - 1000000);
-      lastCachedSample = s;
+    sampleBuffer.push_back(s);
+    if ((int)sampleBuffer.size() >= BATCH_SIZE) {
+      dbManager.writeSampleBatch(sampleBuffer);
+      sampleBuffer.clear();
+      Serial.println("[DB] Batch flushed");
+    }
 
-      sampleBuffer.push_back(s);
-      if ((int)sampleBuffer.size() >= BATCH_SIZE) {
-        dbManager.writeSampleBatch(sampleBuffer);
-        sampleBuffer.clear();
-        Serial.println("[DB] Batch flushed");
-      }
-
-      if (s1Valid) {
-        if (millis() - lastCalSaveMillis > CAL_SAVE_INTERVAL_MS) {
-            saveCalibration("HUB_ONBOARD");
-            lastCalSaveMillis = millis();
-        }
+    if (s1Valid) {
+      if (millis() - lastCalSaveMillis > CAL_SAVE_INTERVAL_MS) {
+          saveCalibration("HUB_ONBOARD");
+          lastCalSaveMillis = millis();
       }
     }
   }
+
+  // Wait 25 seconds between sensor reads.
+  // delay() keeps the WiFi stack running so the AP stays reachable mid-cycle.
+  // Light sleep suspends the modem in AP mode regardless of WIFI_PS settings.
+  delay(25000);
 }

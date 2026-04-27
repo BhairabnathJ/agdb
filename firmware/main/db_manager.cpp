@@ -3,7 +3,7 @@
 #include <SD.h>
 
 DBManager::DBManager(const char *path)
-    : dbPath(path), db(nullptr), insertStmt(nullptr) {}
+    : dbPath(path), db(nullptr), insertStmt(nullptr), hasBattVoltage(false) {}
 
 DBManager::~DBManager() {
   if (insertStmt)
@@ -93,7 +93,13 @@ bool DBManager::init() {
     return false;
   }
 
-  // 2. Enable WAL Mode (Critical for crash safety)
+  // 2. Memory constraints — must be set before any writes
+  executeSQL("PRAGMA page_size=1024;");    // 1 KB pages (default 4 KB) — only affects new DB files
+  executeSQL("PRAGMA cache_size=4;");      // 4-page cache = 4 KB (default is ~8 MB on ESP32)
+  executeSQL("PRAGMA temp_store=FILE;");   // temp tables → SD card, not heap
+  executeSQL("PRAGMA mmap_size=0;");       // disable memory-mapped I/O
+
+  // 3. Enable WAL Mode (Critical for crash safety)
   executeSQL("PRAGMA journal_mode=WAL;");
   executeSQL("PRAGMA synchronous=NORMAL;");
 
@@ -110,7 +116,8 @@ bool DBManager::init() {
       "urgency TEXT, confidence REAL, qc_valid INTEGER, seq INTEGER, "
       "air_temp_c REAL DEFAULT -1, humidity REAL DEFAULT -1, "
       "raw_adc_2 INTEGER DEFAULT -1, theta_2 REAL DEFAULT -1, "
-      "device_id TEXT DEFAULT 'HUB_ONBOARD', battery_pct INTEGER DEFAULT -1);"
+      "device_id TEXT DEFAULT 'HUB_ONBOARD', battery_pct INTEGER DEFAULT -1, "
+      "batt_voltage REAL DEFAULT -1);"
       "CREATE INDEX IF NOT EXISTS idx_timestamp ON samples(timestamp);"
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_sample ON samples(device_id, timestamp, seq);"
       "CREATE TABLE IF NOT EXISTS calibration ("
@@ -122,7 +129,23 @@ bool DBManager::init() {
   if (!executeSQL(tableSQL))
     return false;
 
-  // 3b. Schema migration — fallback for databases created before the current
+  // 3b. Pre-migration: try to add batt_voltage with the simplest possible SQL
+  //     (no DEFAULT clause) before migrateTable runs.  Some ESP32 SQLite
+  //     builds have a small parser stack; the DEFAULT expression pushes the
+  //     schema re-parse over the limit.  The bare REAL form uses fewer parse
+  //     nodes.  "duplicate column" means it already exists — silently ignored.
+  {
+    char *err = nullptr;
+    int rc = sqlite3_exec(db, "ALTER TABLE samples ADD COLUMN batt_voltage REAL",
+                          nullptr, nullptr, &err);
+    if (rc != SQLITE_OK && err) {
+      if (strstr(err, "duplicate column") == nullptr)
+        Serial.printf("[DB] batt_voltage pre-migration: %s\n", err);
+      sqlite3_free(err);
+    }
+  }
+
+  // 3c. Schema migration — fallback for databases created before the current
   //     schema.  Fresh databases already have all columns from CREATE TABLE
   //     above, so migrateTable will find every column present and run zero
   //     ALTERs.  Old databases get only the missing columns added.
@@ -150,6 +173,7 @@ bool DBManager::init() {
       {"theta_2", "REAL DEFAULT -1"},
       {"device_id", "TEXT DEFAULT 'HUB_ONBOARD'"},
       {"battery_pct", "INTEGER DEFAULT -1"},
+      {"batt_voltage", "REAL DEFAULT -1"},
   };
   migrateTable(db, "samples", samplesCols,
                sizeof(samplesCols) / sizeof(samplesCols[0]));
@@ -163,20 +187,43 @@ bool DBManager::init() {
   migrateTable(db, "calibration", calibCols,
                sizeof(calibCols) / sizeof(calibCols[0]));
 
-  // 4. Prepare Statements
+  // 4. Probe whether batt_voltage column exists.
+  //    If the ALTER TABLE above succeeded it will be present; if the parser
+  //    stack overflowed on this SQLite build the column will be absent.
+  //    We degrade gracefully: INSERTs use 22 params, SELECTs use SELECT *
+  //    and check sqlite3_column_count() at read time.
+  {
+    sqlite3_stmt *probe = nullptr;
+    hasBattVoltage = (sqlite3_prepare_v2(
+                          db, "SELECT batt_voltage FROM samples LIMIT 0",
+                          -1, &probe, nullptr) == SQLITE_OK);
+    if (probe) sqlite3_finalize(probe);
+    if (!hasBattVoltage)
+      Serial.println("[DB] WARN: batt_voltage column absent — battery data will not be recorded");
+  }
+
+  // 5. Prepare Statements
   return prepareStatements();
 }
 
 bool DBManager::prepareStatements() {
-  // Explicitly list columns — id is excluded, SQLite fills it automatically
-  const char *sql =
+  // id is excluded — SQLite fills it automatically.
+  // Use 23-param form only when batt_voltage column was successfully added.
+  static const char *sqlWith =
+      "INSERT OR REPLACE INTO samples "
+      "(timestamp, raw_adc, temp_c, theta, theta_fc, theta_refill, "
+      "psi_kpa, aw_mm, fraction_depleted, drying_rate, regime, "
+      "status, urgency, confidence, qc_valid, seq, air_temp_c, humidity, "
+      "raw_adc_2, theta_2, device_id, battery_pct, batt_voltage) "
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+  static const char *sqlWithout =
       "INSERT OR REPLACE INTO samples "
       "(timestamp, raw_adc, temp_c, theta, theta_fc, theta_refill, "
       "psi_kpa, aw_mm, fraction_depleted, drying_rate, regime, "
       "status, urgency, confidence, qc_valid, seq, air_temp_c, humidity, "
       "raw_adc_2, theta_2, device_id, battery_pct) "
-      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-      "?)";
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+  const char *sql = hasBattVoltage ? sqlWith : sqlWithout;
 
   int rc = sqlite3_prepare_v2(db, sql, -1, &insertStmt, nullptr);
   if (rc != SQLITE_OK) {
@@ -222,6 +269,8 @@ bool DBManager::writeSampleBatch(std::vector<SampleData> &samples) {
     sqlite3_bind_text(insertStmt, 21, s.device_id.c_str(), -1,
                       SQLITE_TRANSIENT);
     sqlite3_bind_int(insertStmt, 22, s.battery_pct);
+    if (hasBattVoltage)
+      sqlite3_bind_double(insertStmt, 23, s.batt_voltage);
 
     if (sqlite3_step(insertStmt) != SQLITE_DONE) {
       Serial.printf("Insert Step Error: %s\n", sqlite3_errmsg(db));
@@ -263,6 +312,13 @@ SampleData DBManager::getLatestSample() {
       s.qc_valid = sqlite3_column_int(stmt, 15) != 0;
       s.seq = sqlite3_column_int(stmt, 16);
       s.air_temp_c = sqlite3_column_double(stmt, 17);
+      s.humidity = sqlite3_column_double(stmt, 18);
+      s.raw_adc_2 = sqlite3_column_int(stmt, 19);
+      s.theta_2 = sqlite3_column_double(stmt, 20);
+      s.device_id = String((const char *)sqlite3_column_text(stmt, 21));
+      s.battery_pct = sqlite3_column_int(stmt, 22);
+      if (sqlite3_column_count(stmt) > 23)
+        s.batt_voltage = (float)sqlite3_column_double(stmt, 23);
     }
   }
   sqlite3_finalize(stmt);
@@ -272,12 +328,7 @@ SampleData DBManager::getLatestSample() {
 std::vector<SampleData> DBManager::getRecentSamples(int n) {
   std::vector<SampleData> res;
   sqlite3_stmt *stmt;
-  const char *sql =
-      "SELECT id, timestamp, raw_adc, temp_c, theta, theta_fc, theta_refill, "
-      "psi_kpa, aw_mm, fraction_depleted, drying_rate, regime, status, "
-      "urgency, confidence, qc_valid, seq, air_temp_c, humidity, "
-      "raw_adc_2, theta_2, device_id, battery_pct "
-      "FROM samples ORDER BY timestamp DESC LIMIT ?";
+  const char *sql = "SELECT * FROM samples ORDER BY timestamp DESC LIMIT ?";
 
   if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
     sqlite3_bind_int(stmt, 1, n);
@@ -306,6 +357,8 @@ std::vector<SampleData> DBManager::getRecentSamples(int n) {
       s.theta_2 = sqlite3_column_double(stmt, 20);
       s.device_id = String((const char *)sqlite3_column_text(stmt, 21));
       s.battery_pct = sqlite3_column_int(stmt, 22);
+      if (sqlite3_column_count(stmt) > 23)
+        s.batt_voltage = (float)sqlite3_column_double(stmt, 23);
       res.push_back(s);
     }
   }
@@ -317,8 +370,9 @@ std::vector<SampleData> DBManager::getSamplesInRange(time_t start, time_t end) {
   std::vector<SampleData> res;
   sqlite3_stmt *stmt;
   // Limit to 200 points to prevent memory overflow on ESP32
-  const char *sql = "SELECT timestamp, theta FROM samples WHERE timestamp "
-                    "BETWEEN ? AND ? ORDER BY timestamp ASC LIMIT 200";
+  const char *sql =
+      "SELECT * FROM samples WHERE timestamp BETWEEN ? AND ? "
+      "ORDER BY timestamp ASC LIMIT 200";
 
   if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
     sqlite3_bind_int64(stmt, 1, start);
@@ -326,8 +380,31 @@ std::vector<SampleData> DBManager::getSamplesInRange(time_t start, time_t end) {
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
       SampleData s = {};
-      s.timestamp = sqlite3_column_int64(stmt, 0);
-      s.theta = sqlite3_column_double(stmt, 1);
+      s.id = sqlite3_column_int(stmt, 0);
+      s.timestamp = sqlite3_column_int64(stmt, 1);
+      s.raw_adc = sqlite3_column_int(stmt, 2);
+      s.temp_c = sqlite3_column_double(stmt, 3);
+      s.theta = sqlite3_column_double(stmt, 4);
+      s.theta_fc = sqlite3_column_double(stmt, 5);
+      s.theta_refill = sqlite3_column_double(stmt, 6);
+      s.psi_kpa = sqlite3_column_double(stmt, 7);
+      s.aw_mm = sqlite3_column_double(stmt, 8);
+      s.fraction_depleted = sqlite3_column_double(stmt, 9);
+      s.drying_rate = sqlite3_column_double(stmt, 10);
+      s.regime = String((const char *)sqlite3_column_text(stmt, 11));
+      s.status = String((const char *)sqlite3_column_text(stmt, 12));
+      s.urgency = String((const char *)sqlite3_column_text(stmt, 13));
+      s.confidence = sqlite3_column_double(stmt, 14);
+      s.qc_valid = sqlite3_column_int(stmt, 15) != 0;
+      s.seq = sqlite3_column_int(stmt, 16);
+      s.air_temp_c = sqlite3_column_double(stmt, 17);
+      s.humidity = sqlite3_column_double(stmt, 18);
+      s.raw_adc_2 = sqlite3_column_int(stmt, 19);
+      s.theta_2 = sqlite3_column_double(stmt, 20);
+      s.device_id = String((const char *)sqlite3_column_text(stmt, 21));
+      s.battery_pct = sqlite3_column_int(stmt, 22);
+      if (sqlite3_column_count(stmt) > 23)
+        s.batt_voltage = (float)sqlite3_column_double(stmt, 23);
       res.push_back(s);
     }
   }
@@ -339,11 +416,7 @@ SampleData DBManager::getLatestSampleForDevice(const String &deviceId) {
   SampleData s = {};
   sqlite3_stmt *stmt;
   const char *sql =
-      "SELECT id, timestamp, raw_adc, temp_c, theta, theta_fc, theta_refill, "
-      "psi_kpa, aw_mm, fraction_depleted, drying_rate, regime, status, "
-      "urgency, confidence, qc_valid, seq, air_temp_c, humidity, "
-      "raw_adc_2, theta_2, device_id, battery_pct "
-      "FROM samples WHERE device_id = ? ORDER BY timestamp DESC LIMIT 1";
+      "SELECT * FROM samples WHERE device_id = ? ORDER BY timestamp DESC LIMIT 1";
 
   if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
     sqlite3_bind_text(stmt, 1, deviceId.c_str(), -1, SQLITE_TRANSIENT);
@@ -371,6 +444,8 @@ SampleData DBManager::getLatestSampleForDevice(const String &deviceId) {
       s.theta_2 = sqlite3_column_double(stmt, 20);
       s.device_id = String((const char *)sqlite3_column_text(stmt, 21));
       s.battery_pct = sqlite3_column_int(stmt, 22);
+      if (sqlite3_column_count(stmt) > 23)
+        s.batt_voltage = (float)sqlite3_column_double(stmt, 23);
     }
   }
   sqlite3_finalize(stmt);
@@ -382,11 +457,7 @@ std::vector<SampleData> DBManager::getRecentSamples(int n,
   std::vector<SampleData> res;
   sqlite3_stmt *stmt;
   const char *sql =
-      "SELECT id, timestamp, raw_adc, temp_c, theta, theta_fc, theta_refill, "
-      "psi_kpa, aw_mm, fraction_depleted, drying_rate, regime, status, "
-      "urgency, confidence, qc_valid, seq, air_temp_c, humidity, "
-      "raw_adc_2, theta_2, device_id, battery_pct "
-      "FROM samples WHERE device_id = ? ORDER BY timestamp DESC LIMIT ?";
+      "SELECT * FROM samples WHERE device_id = ? ORDER BY timestamp DESC LIMIT ?";
 
   if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
     sqlite3_bind_text(stmt, 1, deviceId.c_str(), -1, SQLITE_TRANSIENT);
@@ -416,6 +487,8 @@ std::vector<SampleData> DBManager::getRecentSamples(int n,
       s.theta_2 = sqlite3_column_double(stmt, 20);
       s.device_id = String((const char *)sqlite3_column_text(stmt, 21));
       s.battery_pct = sqlite3_column_int(stmt, 22);
+      if (sqlite3_column_count(stmt) > 23)
+        s.batt_voltage = (float)sqlite3_column_double(stmt, 23);
       res.push_back(s);
     }
   }
